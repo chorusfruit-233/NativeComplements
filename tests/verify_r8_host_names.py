@@ -22,9 +22,19 @@ REQUIRED = {
     (PREFIX + "features/navbar/NavbarTaskbarHost;", "install"): {
         "com.android.launcher3.taskbar.TaskbarInsetsController", "android.view.InsetsFrameProvider",
         "setProviderInsets", "draw", "dispatchDraw", "callApplicationOnCreate"},
-    (PREFIX + "BackBridge;", "installEdgeTouchAdmission"): {"kotlin.Unit"},
+    (PREFIX + "NativeBackInput;", "resolve"): {
+        "kotlin.Unit", "com.android.systemui.navigationbar.gestural.EdgeBackGestureHandler$$ExternalSyntheticLambda11",
+        "com.android.systemui.shared.system.InputChannelCompat$InputEventReceiver$1"},
+    (PREFIX + "NativeBackInput;", "<init>"): {
+        "mDisplayBackGestureHandlers", "inputMonitorCompat", "mDisplayId", "mInputMonitor",
+        "onInputEvent", "invoke", "val$listener", "INSTANCE"},
+    (PREFIX + "NotificationClickTargets;", "<init>"): {
+        "run", "startPendingIntent", "f$0", "f$2", "f$3", "f$4", "f$5", "mDisplayId"},
     (PREFIX + "features/shade/ComposeShadeLayout;", "install"): {"kotlin.coroutines.Continuation"},
-    (PREFIX + "features/shade/SignalDisplay;", "install"): {"kotlin.Pair"},
+    (PREFIX + "features/shade/SignalDisplayTargets;", "resolve"): {
+        "kotlin.Pair", "kotlin.coroutines.Continuation",
+        "com.android.systemui.statusbar.pipeline.mobile.domain.model.SignalIconModel$Cellular",
+        "com.android.systemui.statusbar.pipeline.mobile.domain.model.SignalIconModel$CellularTypeIconModel$Cellular"},
     (PREFIX + "features/shade/SignalDisplay;", "installStacked"): {
         "kotlin.Pair", "androidx.compose.runtime.ParcelableSnapshotMutableIntState",
         "androidx.compose.runtime.Composer", "androidx.compose.ui.Modifier"},
@@ -37,6 +47,9 @@ RUNTIME_METHODS = {
     "WindowEngine": {"blockBackgroundTouch", "trackTouchGuard", "clientOwner", "ownerInsets", "idle", "mayAllowResize", "visibleFullscreen", "endClosedApplications"},
     "WindowPolicy": {"backgroundTouchGuard", "startsTouchGuard", "coveredFullscreen"},
     "BackBridge": {"connect", "cancelNativeUp", "abort"},
+    "NativeBackInput": {"resolve", "display", "pilfer"},
+    "NotificationClickTargets": {"resolve", "display"},
+    "features/shade/SignalDisplayTargets": {"resolve", "model"},
     "Config": {"longBackWindow"},
     "TaskCover": {"beforeReveal", "canRetarget", "reusesPresentation", "handoff"},
     "TaskCleanupGuard": {"install", "delay", "acquired", "check"},

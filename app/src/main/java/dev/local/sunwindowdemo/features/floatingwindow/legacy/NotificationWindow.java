@@ -15,30 +15,16 @@ import java.util.function.Consumer;
 final class NotificationWindow {
     private record Click(StatusBarNotification notice,PendingIntent pending) {}
     private final ThreadLocal<Click> current=new ThreadLocal<>();
-    private final Field runEntry,runPending,runAnimate,startEntry,startPending,startFill,startDisplay,sbn;
+    private final Field runEntry,runPending,runAnimate,startEntry,startPending,startFill,sbn;
     private final Method run,start;
+    private final NotificationClickTargets targets;
     private NotificationWindow(ClassLoader loader,Consumer<String> log)throws Exception{
-        String base="com.android.systemui.statusbar.phone.StatusBarNotificationActivityStarter";
         Class<?> entry=Class.forName("com.android.systemui.statusbar.notification.collection.NotificationEntry",false,loader);
-        Class<?> runner=clickAdapter(loader,base,entry,true);
-        Class<?> sender=clickAdapter(loader,base,entry,false);
-        run=runner.getDeclaredMethod("run");start=sender.getDeclaredMethod("startPendingIntent",Class.forName("android.view.RemoteAnimationAdapter",false,loader));
-        if(run.getReturnType()!=void.class||start.getReturnType()!=int.class)throw new NoSuchMethodException("notification click signatures");
-        runEntry=field(runner,"f$1",entry);runPending=field(runner,"f$3",PendingIntent.class);runAnimate=field(runner,"f$5",boolean.class);
-        startEntry=field(sender,"f$5",entry);startPending=field(sender,"f$3",PendingIntent.class);
-        startFill=field(sender,"f$4",Intent.class);startDisplay=field(sender,"f$2",int.class);
+        targets=NotificationClickTargets.resolve(loader,entry);
+        run=targets.run;start=targets.start;
+        runEntry=targets.runEntry;runPending=targets.runPending;runAnimate=targets.runAnimate;
+        startEntry=targets.startEntry;startPending=targets.startPending;startFill=targets.startFill;
         sbn=field(entry,"mSbn",StatusBarNotification.class);
-    }
-    private static Class<?> clickAdapter(ClassLoader loader,String base,Class<?> entry,boolean runner)throws Exception{
-        for(int number:runner?new int[]{7,6}:new int[]{10,12})try{
-            Class<?> type=Class.forName(base+"$$ExternalSyntheticLambda"+number,false,loader);
-            field(type,runner?"f$1":"f$5",entry);
-            field(type,"f$3",PendingIntent.class);
-            if(runner){field(type,"f$5",boolean.class);type.getDeclaredMethod("run");}
-            else{field(type,"f$4",Intent.class);field(type,"f$2",int.class);type.getDeclaredMethod("startPendingIntent",Class.forName("android.view.RemoteAnimationAdapter",false,loader));}
-            return type;
-        }catch(ClassNotFoundException|NoSuchFieldException|NoSuchMethodException mismatch){ }
-        throw new NoSuchMethodException("notification click adapter");
     }
     private static Field field(Class<?> owner,String name,Class<?> type)throws Exception{
         Field f=owner.getDeclaredField(name);if(f.getType()!=type||Modifier.isStatic(f.getModifiers()))throw new NoSuchFieldException(name);
@@ -77,7 +63,7 @@ final class NotificationWindow {
             hooks.add(module.hook(route.start).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{
                 try{
                     Click selected=route.current.get();Object owner=chain.getThisObject();SystemUiHost host=SystemUiHost.live;
-                    if(selected!=null&&host!=null&&host.notificationWindowReady()&&route.startDisplay.getInt(owner)==Display.DEFAULT_DISPLAY
+                    if(selected!=null&&host!=null&&host.notificationWindowReady()&&route.targets.display(owner)==Display.DEFAULT_DISPLAY
                         &&backgroundTarget(selected.notice.getPackageName(),host.notificationForegroundPackage())
                         &&selected.pending.equals(route.startPending.get(owner))
                         &&selected.notice.equals(route.sbn.get(route.startEntry.get(owner)))){

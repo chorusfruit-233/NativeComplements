@@ -65,10 +65,9 @@ public final class BackBridge extends XposedModule {
             Field allow=field(handlerClass,"mAllowGesture"),logging=field(handlerClass,"mLogGesture"),rejected=field(handlerClass,"mInRejectedExclusion");
             if(dispatch.getReturnType()!=void.class||allow.getType()!=boolean.class||logging.getType()!=boolean.class||rejected.getType()!=boolean.class)
                 throw new NoSuchMethodException("native Back cancellation signatures");
-            Class<?> input=field(Class.forName("com.android.systemui.navigationbar.gestural.DisplayBackGestureHandlerImpl",false,cl),"onInputEvent").getType();
-            if(input.isInterface())input=Class.forName("com.android.systemui.navigationbar.gestural.EdgeBackGestureHandler$$ExternalSyntheticLambda20",false,cl);
+            NativeBackInput input=NativeBackInput.resolve(cl);
             // This native caller can inline dispatchToBackAnimation in an AOT SystemUI build.
-            if(!deoptimize(input.getDeclaredMethod("invoke",Object.class)))throw new IllegalStateException("native Back dispatcher deoptimize");
+            if(!deoptimize(input.invoke))throw new IllegalStateException("native Back dispatcher deoptimize");
             hooks.add(hook(dispatch).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{
                 MotionEvent event=(MotionEvent)chain.getArg(0);Stroke s=cancelling;
                 if(s==null||!cancelNativeUp(s.handler,s.gesture.down(),chain.getThisObject(),event))return chain.proceed();
@@ -156,29 +155,18 @@ public final class BackBridge extends XposedModule {
     @android.annotation.SuppressLint("BlockedPrivateApi")
     private void installEdgeTouchAdmission(ClassLoader cl){
         try{
-            Class<?> displayHandler=Class.forName("com.android.systemui.navigationbar.gestural.DisplayBackGestureHandlerImpl",false,cl);
-            Class<?> adapter=field(displayHandler,"onInputEvent").getType();
-            if(adapter.isInterface())adapter=Class.forName("com.android.systemui.navigationbar.gestural.EdgeBackGestureHandler$$ExternalSyntheticLambda20",false,cl);
-            Class<?> handler=Class.forName("com.android.systemui.navigationbar.gestural.EdgeBackGestureHandler",false,cl);
-            Field owner=field(adapter,"f$0"),displays=field(handler,"mDisplayBackGestureHandlers");
-            Method invoke=adapter.getDeclaredMethod("invoke",Object.class);
+            NativeBackInput input=NativeBackInput.resolve(cl);
+            Class<?> handler=input.owner.getType();
+            Field owner=input.owner;
+            Method invoke=input.invoke;
             Method cancel=handler.getDeclaredMethod("cancelGesture",MotionEvent.class);
             Method eventDisplay=MotionEvent.class.getDeclaredMethod("getDisplayId");
-            Class<?> unitClass=Class.forName("kotlin.Unit",false,cl);
-            Field instance=unitClass.getField("INSTANCE");
-            if(owner.getType()!=handler||displays.getType()!=Map.class||invoke.getReturnType()!=Object.class
-                ||cancel.getReturnType()!=void.class||eventDisplay.getReturnType()!=int.class||Modifier.isStatic(invoke.getModifiers())
-                ||Modifier.isStatic(cancel.getModifiers())||instance.getType()!=unitClass||!Modifier.isStatic(instance.getModifiers()))
+            if(cancel.getReturnType()!=void.class||eventDisplay.getReturnType()!=int.class||Modifier.isStatic(cancel.getModifiers()))
                 throw new NoSuchMethodException("edge admission signature mismatch");
-            Object unit=instance.get(null);if(unit==null)throw new IllegalStateException("missing Unit.INSTANCE");
-            Class<?> compatType=Class.forName("com.android.systemui.shared.system.InputMonitorCompat",false,cl);
-            Class<?> monitorType=Class.forName("android.view.InputMonitor");
-            Field compat=field(displayHandler,"inputMonitorCompat"),monitor=field(compatType,"mInputMonitor");
-            Method pilfer=monitorType.getDeclaredMethod("pilferPointers");
-            if(compat.getType()!=compatType||monitor.getType()!=monitorType||pilfer.getReturnType()!=void.class)
-                throw new NoSuchMethodException("corner input monitor signature mismatch");
-            pilfer.setAccessible(true);
+            Object unit=input.consumed;
             invoke.setAccessible(true);cancel.setAccessible(true);eventDisplay.setAccessible(true);
+            // API35's outer receiver must still finish every event, including consumed ones.
+            if(input.receiver!=null&&!deoptimize(input.receiver))throw new IllegalStateException("native input receiver deoptimize");
             java.util.concurrent.atomic.AtomicBoolean active=new java.util.concurrent.atomic.AtomicBoolean(true);
             hook(invoke).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{
                 Object argument=chain.getArg(0);
@@ -186,10 +174,9 @@ public final class BackBridge extends XposedModule {
                     try{
                         if((Integer)eventDisplay.invoke(event)==Display.DEFAULT_DISPLAY){
                             SystemUiHost host=SystemUiHost.live;
-                            Object map=displays.get(owner.get(chain.getThisObject()));
-                            Object display=map instanceof Map<?,?> handlers?handlers.get(Display.DEFAULT_DISPLAY):null;
+                            Object display=input.display(chain.getThisObject(),Display.DEFAULT_DISPLAY);
                             if(host!=null&&display!=null&&host.cornerInput(event,()->{
-                                try{pilfer.invoke(monitor.get(compat.get(display)));}
+                                try{input.pilfer(display);}
                                 catch(Exception error){throw new IllegalStateException("corner pilfer",error);}
                             }))return unit;
                         }
@@ -204,8 +191,8 @@ public final class BackBridge extends XposedModule {
                         if((Integer)eventDisplay.invoke(event)!=Display.DEFAULT_DISPLAY)return chain.proceed();
                         SystemUiHost host=SystemUiHost.live;
                         if(host!=null&&host.blocksEdgeTouch(event.getX(),event.getY())){
-                            Object nativeHandler=owner.get(chain.getThisObject()),map=displays.get(nativeHandler);
-                            if(map instanceof Map<?,?> handlers&&handlers.get(Display.DEFAULT_DISPLAY)!=null){
+                            Object nativeHandler=owner.get(chain.getThisObject());
+                            if(input.display(chain.getThisObject(),Display.DEFAULT_DISPLAY)!=null){
                                 cancel.invoke(nativeHandler,event);return unit;
                             }
                         }

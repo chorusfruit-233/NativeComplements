@@ -139,6 +139,26 @@ public class ShadeTest {
         assertEquals(ShadeStore.SYSTEM_UI, intent.getPackage());
     }
 
+    public static class SplitController { }
+    public static class InlinedQs {
+        SplitController mSplitShadeStateController;
+        android.content.res.Resources mResources;
+        boolean mSplitShadeEnabled;
+    }
+    public static class InlinedPanel { InlinedQs mQsController; }
+    public static class SeparateQs { public void updateResources() { } }
+    public static class WrongQs { public int updateResources() { return 0; } }
+    public static class UnknownQs { boolean mSplitShadeEnabled; }
+
+    @Test public void api35QsFallbackRequiresTheVerifiedPanelOwnedFields() throws Exception {
+        assertTrue(LandscapeShade.qsUpdateInPanel(InlinedPanel.class, InlinedQs.class, SplitController.class));
+        assertFalse(LandscapeShade.qsUpdateInPanel(Panel.class, SeparateQs.class, SplitController.class));
+        assertThrows(NoSuchFieldException.class,
+                () -> LandscapeShade.qsUpdateInPanel(InlinedPanel.class, UnknownQs.class, SplitController.class));
+        assertThrows(NoSuchMethodException.class,
+                () -> LandscapeShade.qsUpdateInPanel(Panel.class, WrongQs.class, SplitController.class));
+    }
+
     public static class Panel {
         int updates;
         boolean fail;

@@ -21,7 +21,23 @@ final class ComposeShadeLayout {
 
     static void install(XposedModule module, ClassLoader loader, List<XposedInterface.HookHandle> hooks,
                         Predicate<Resources> force) throws Exception {
-        Class<?> repository = Class.forName("com.android.systemui.shade.data.repository.ShadeConfigRepository", false, loader);
+        Class<?> repository;
+        try { repository = Class.forName("com.android.systemui.shade.data.repository.ShadeConfigRepository", false, loader); }
+        catch (ClassNotFoundException api35) {
+            // API35 hydrates ShadeRepository through the same legacy split getter.
+            // It has no ShadeConfigRepository or Compose boolean resource scope.
+            Class<?> startable = Class.forName("com.android.systemui.shade.domain.startable.ShadeStartable", false, loader);
+            Class<?> emitter = Class.forName("com.android.systemui.shade.domain.startable.ShadeStartable$hydrateShadeLayoutWidth$1$2", false, loader);
+            if (emitter.getDeclaredField("this$0").getType() != startable
+                    || !startable.getDeclaredField("splitShadeStateController").getType().getName()
+                        .equals("com.android.systemui.statusbar.policy.SplitShadeStateControllerImpl"))
+                throw new NoSuchFieldException("legacy shade hydration owner");
+            Method emit = emitter.getDeclaredMethod("emit", Object.class, Class.forName("kotlin.coroutines.Continuation", false, loader));
+            if (emit.getReturnType() != Object.class) throw new NoSuchMethodException("legacy shade hydration emit");
+            trackConfiguration(module, loader, hooks);
+            if (!module.deoptimize(emit)) throw new IllegalStateException("legacy shade hydration deoptimize");
+            return;
+        }
         Class<?> interactor = Class.forName("com.android.systemui.shade.domain.interactor.ShadeModeInteractorImpl", false, loader);
         Class<?> emitter;
         boolean hydrated;
@@ -34,9 +50,6 @@ final class ComposeShadeLayout {
             emitter=Class.forName("com.android.systemui.shade.data.repository.ShadeConfigRepository$onActivated$2$1$1",false,loader);
             hydrated=true;
         }
-        Class<?> callback = Class.forName("com.android.systemui.common.ui.data.repository.ConfigurationRepositoryImpl$onConfigurationChange$1$callback$1", false, loader);
-        onConfigChanged = callback.getDeclaredMethod("onConfigChanged", Configuration.class);
-        onConfigChanged.setAccessible(true);
         Method emit = emitter.getDeclaredMethod("emit", Object.class, Class.forName("kotlin.coroutines.Continuation", false, loader));
         hooks.add(module.hook(Resources.class.getDeclaredMethod("getBoolean", int.class))
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
@@ -64,6 +77,16 @@ final class ComposeShadeLayout {
             }));
             if (!module.deoptimize(constructor)) throw new IllegalStateException("compose shade initial state deoptimize");
         }
+        trackConfiguration(module, loader, hooks);
+        if (!module.deoptimize(emit)) throw new IllegalStateException("compose shade emitter deoptimize");
+    }
+
+    private static void trackConfiguration(XposedModule module, ClassLoader loader,
+                                           List<XposedInterface.HookHandle> hooks) throws Exception {
+        Class<?> callback = Class.forName("com.android.systemui.common.ui.data.repository.ConfigurationRepositoryImpl$onConfigurationChange$1$callback$1", false, loader);
+        onConfigChanged = callback.getDeclaredMethod("onConfigChanged", Configuration.class);
+        if (onConfigChanged.getReturnType() != void.class) throw new NoSuchMethodException("shade configuration callback");
+        onConfigChanged.setAccessible(true);
         for (Constructor<?> constructor : callback.getDeclaredConstructors()) {
             hooks.add(module.hook(constructor).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
                 Object result = chain.proceed();
@@ -71,7 +94,6 @@ final class ComposeShadeLayout {
                 return result;
             }));
         }
-        if (!module.deoptimize(emit)) throw new IllegalStateException("compose shade emitter deoptimize");
     }
 
     // R classes can be removed by R8 even when JADX prints symbolic R.bool references.

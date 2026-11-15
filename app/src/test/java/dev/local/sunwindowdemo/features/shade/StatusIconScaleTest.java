@@ -4,6 +4,15 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class StatusIconScaleTest {
+    public static class IndividualIcons { }
+    public static class GroupedIcons { Object mBundleEntry = new Object(); }
+    public static class InvalidIcons { int mBundleEntry; }
+    @Test public void api35NeedsNoBundleFieldAndNewerGroupsRemainDetectable()throws Exception{
+        assertNull(StatusIconScale.bundleField(IndividualIcons.class));
+        GroupedIcons grouped=new GroupedIcons();
+        assertSame(grouped.mBundleEntry,StatusIconScale.bundleField(GroupedIcons.class).get(grouped));
+        assertThrows(NoSuchFieldException.class,()->StatusIconScale.bundleField(InvalidIcons.class));
+    }
     @Test public void nativeDefaultAndSmallerSizesAreExact(){
         assertEquals(1,StatusIconScale.multiplier(100,18,18,24,24),0);
         assertEquals(.8f,StatusIconScale.multiplier(80,18,18,24,24),0);

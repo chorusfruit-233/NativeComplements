@@ -10,6 +10,22 @@
 
 `004aa43` 已 commit 并 push C2 WindowControl、C3a LongBackGesture、OpenWaitState，完整双单测 full 368 / window 363 零失败，基线/主机及归档接口检查通过。仍剩导航 native ticket / pure WindowNavigation 与 Policy Object 改 facts、recovery boot/retry、tick lease/screen schedule、Host 不同入口 admission、BackBridge C3b handoff generation/idle/timeout 五闭环；复用已有纯规则，native AtomicFile/Parcel/WM/Binder 留适配侧不算业务未解耦。不称全部解耦、独立版可用或 LOS 兼容。未来我们完成 refactor 后，LOS 贡献者再 fork / adapt / test PR，经我们 review + 现设备回归后决定 merge。详见 [当前总览](<README.md>)。
 
+## 2026-11-15 草稿 SystemUI / API35 适配
+
+本轮目标是 `chorusfruit-233/NativeComplements` 草稿 release 的 `_15.apk`（asset `751573293`），不是先前 current/QPR2 归档。实际清单为 `com.android.systemui`、versionName `15`、versionCode / minSdk / targetSdk `35`；SHA256：`9b922ad353ddab0c2a286804e4960f7d17fc9d82c8767434553645fdb9619f0c`。功能版本沿用实施中的 `0.10.0 / code139`。
+
+- [NativeBackInput](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/NativeBackInput.java>) 补精确 `EdgeBackGestureHandler$$ExternalSyntheticLambda11.onInputEvent(InputEvent):void` 路径。此构建没有 `DisplayBackGestureHandlerImpl`；监视器来自 handler 自身 `mInputMonitor`，显示器来自 `mDisplayId`。只拦截 listener，deopt 原生外层 receiver，保留其 `finishInputEvent`；现有 current/QPR2 的 Function1 / Unit / per-display map 路径保留。
+- [NotificationClickTargets](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/NotificationClickTargets.java>) 补 runnable4 / sender9。sender 的 pending / fill-in / entry 分别为 `f$2/f$3/f$4`，真实启动显示器来自 `f$0.mDisplayId`；继续只转换主显示器上的原通知正文 activity PendingIntent，保留通知身份关联及动画标志恢复。current 7/10、QPR2 6/12 仍独立预检。
+- [SignalDisplayTargets](<../../app/src/main/java/dev/local/sunwindowdemo/features/shade/SignalDisplayTargets.java>) 区分 API35 直接 `SignalIconModel$Cellular` / binder 尾号 `$1` 和 API37 Pair / nested Cellular / binder 尾号 `$2`。此构建只存在标准 telephony repository，Kairos 类缺失可跳过，已存在但成员不匹配仍拒装；carrier change、卫星、无效订阅保持原生。此 APK 没有 stacked Compose 信号链，不能据此称该路径已支持。
+- [LandscapeShade](<../../app/src/main/java/dev/local/sunwindowdemo/features/shade/LandscapeShade.java>) 核对 API35 panel 内两次 split getter 与 `QS.setInSplitShade`，不再要求被内联移除的 QS `updateResources`。按实际 API35 caller deopt，通过原生 `ShadeStartable` collector 与既有配置 callback 刷新 `ShadeRepository`，不要求不存在的 `ShadeConfigRepository`，不写 readonly flow 或强开 Scene。
+- [StatusIconScale](<../../app/src/main/java/dev/local/sunwindowdemo/features/shade/StatusIconScale.java>) 允许本构建缺少 `mBundleEntry`，保留新版 bundle 图标排除；[RotationSuggestion](<../../app/src/main/java/dev/local/sunwindowdemo/features/suggestions/runtime/RotationSuggestion.java>) 补 `mMainThreadHandler`，与既有 `mUiHandler` 均严格要求实例 Handler。
+
+[专用 DEX 检查](<../../tests/verify_systemui15_target.py>) 对真实 APK 核验固定 hash、97 项声明成员、原生输入完成顺序、通知 sender 创建/显示器读取、信号模型与 setLevel、panel 两次 split 决策、ShadeStartable hydration 和导航重排调用：`python tests/verify_systemui15_target.py --apk /path/to/_15.apk`。旧 current/QPR2 的 [test4 库存检查](<../../tests/verify_test4_target.py>) 保持原样；不能用它代替重读旧 APK。新增 JVM 回归覆盖两种输入宿主、三类通知适配器的字段形状、两种信号 payload、QS 内联预检及状态图标/旋转字段差异。
+
+最终检查：双完整单测 full **382** / window **377**，零失败、零跳过；不可变 Demo8.2 基线与主机回归、旧 current/QPR2 test4 库存、文档链接检查均 PASS；双 unsigned release/R8 编译、最终 DEX 反射名称、包身份、静态 scope/入口、快捷方式及独立版禁止非小窗功能边界均 PASS。
+
+本轮输入只有 SystemUI APK；没有对应 `framework.jar`、`services.jar`、Launcher 或设备执行证据，不表示整个 Android15 系统、小窗服务端或其他桌面已兼容。环境不含原 `.local/demo.keystore`，release 编译采用本地 init script 暂时移除签名，只作双产物 R8/身份/边界检查；不替换密钥、不把 unsigned 检查产物作为可覆盖升级包，未执行要求原证书的最终打包交付。
+
 ## 138 历史审计（以下正文）
 
 > 审计基线：`main` / `930a22c`，versionCode 138（0.9.48-fixes-test2）。以下保留当时源码审计、共享依赖与证据缺口，含“当前/未拆分”等表述均按历史阅读，不代表现状态。源码链接已迁移到现路径、去除不可靠行锚，仅是定位参考，不是旧 snapshot 的精确函数内容。本页原审计仅阅读源码与检查脚本，未构建或访问设备；当时归档/基线检查由 Lead 汇总。小窗主体见专项文档。

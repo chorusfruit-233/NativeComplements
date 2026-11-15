@@ -23,7 +23,8 @@ WINDOW_FORBIDDEN = {"Ldev/local/sunwindowdemo/" + name + ";" for name in (
     "SuggestionHost", "SuggestionInput", "BarrageHost", "RotationSuggestion", "LauncherRotationSuggestion",
     "features/callblocking/CallBlockingModule", "features/navbar/NavbarModule", "features/iconlayers/IconLayerModule",
     "features/iconlayers/SystemIconModule", "features/iconlayers/DrawerMonet", "features/motion/MotionAccess",
-    "features/edgetouch/EdgeInputFilter", "features/shade/LandscapeShade", "features/shade/StatusBarOffset", "features/shade/SignalDisplay")}
+    "features/edgetouch/EdgeInputFilter", "features/shade/LandscapeShade", "features/shade/StatusBarOffset",
+    "features/shade/SignalDisplay", "features/shade/SignalDisplayTargets")}
 
 
 def check_scopes(text):

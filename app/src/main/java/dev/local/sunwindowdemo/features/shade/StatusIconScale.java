@@ -25,11 +25,11 @@ public final class StatusIconScale {
     }
     public static void install(XposedModule module,ClassLoader loader)throws ReflectiveOperationException {
         Class<?> type=Class.forName("com.android.systemui.statusbar.StatusBarIconView",false,loader);
-        Field notification=field(type,"mNotification"),bundle=field(type,"mBundleEntry"),slot=field(type,"mSlot"),scale=field(type,"mIconScale");
+        Field notification=field(type,"mNotification"),bundle=bundleField(type),slot=field(type,"mSlot"),scale=field(type,"mIconScale");
         module.hook(type.getDeclaredMethod("onDraw",android.graphics.Canvas.class))
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{
                 ImageView view=(ImageView)chain.getThisObject();
-                if(bundle.get(view)!=null)return chain.proceed();
+                if(bundle!=null&&bundle.get(view)!=null)return chain.proceed();
                 boolean notice=notification.get(view)!=null;
                 if(!notice&&!systemSlot((String)slot.get(view)))return chain.proceed();
                 remember(view);
@@ -40,6 +40,15 @@ public final class StatusIconScale {
                 try{scale.setFloat(view,adjusted);return chain.proceed();}
                 finally{scale.setFloat(view,original);} // Preserve native animation, pivots and dot drawing.
             });
+    }
+    static Field bundleField(Class<?> type)throws ReflectiveOperationException {
+        // API35 has only individual notification icons; newer grouped entries stay native.
+        Field bundle;
+        try{bundle=field(type,"mBundleEntry");}
+        catch(NoSuchFieldException absent){return null;}
+        if(bundle.getType().isPrimitive()||java.lang.reflect.Modifier.isStatic(bundle.getModifiers()))
+            throw new NoSuchFieldException("status icon bundle entry");
+        return bundle;
     }
     private static Field field(Class<?> type,String name)throws ReflectiveOperationException {
         Field field=type.getDeclaredField(name);field.setAccessible(true);return field;

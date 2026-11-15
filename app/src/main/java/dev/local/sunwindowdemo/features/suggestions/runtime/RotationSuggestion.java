@@ -55,7 +55,7 @@ final class RotationSuggestion {
             Field keyView = button.getType().getDeclaredField("mKeyButtonView");
             Field proposal = controller.getDeclaredField("mLastRotationSuggestion");
             Field pending = controller.getDeclaredField("mPendingRotationSuggestion");
-            Field handler = controller.getDeclaredField("mUiHandler");
+            Field handler = uiHandler(controller);
             Field cancel = controller.getDeclaredField("mCancelPendingRotationProposal");
             state.setAccessible(true); button.setAccessible(true); keyView.setAccessible(true); proposal.setAccessible(true);
             pending.setAccessible(true); handler.setAccessible(true); cancel.setAccessible(true);
@@ -122,5 +122,15 @@ final class RotationSuggestion {
             RotationDiagnostics.update("hook","安装失败: "+failure.getClass().getSimpleName());
             log.accept("ROTATION_SUGGESTION_UNAVAILABLE " + failure);
         }
+    }
+
+    static Field uiHandler(Class<?> controller) throws ReflectiveOperationException {
+        Field handler;
+        try { handler = controller.getDeclaredField("mUiHandler"); }
+        catch (NoSuchFieldException api35) { handler = controller.getDeclaredField("mMainThreadHandler"); }
+        if (handler.getType() != android.os.Handler.class || java.lang.reflect.Modifier.isStatic(handler.getModifiers()))
+            throw new NoSuchFieldException("rotation UI handler");
+        handler.setAccessible(true);
+        return handler;
     }
 }

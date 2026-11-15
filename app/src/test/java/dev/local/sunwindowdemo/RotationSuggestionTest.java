@@ -19,6 +19,14 @@ import static org.junit.Assert.*;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
 public class RotationSuggestionTest {
+    public static class Api35Controller { android.os.Handler mMainThreadHandler; }
+    public static class Api37Controller { android.os.Handler mUiHandler; }
+    public static class InvalidController { Object mUiHandler; android.os.Handler mMainThreadHandler; }
+    @Test public void nativeHandlerNamesRemainTypedAndDoNotMaskAnIncompatibleField()throws Exception{
+        assertEquals("mMainThreadHandler",RotationSuggestion.uiHandler(Api35Controller.class).getName());
+        assertEquals("mUiHandler",RotationSuggestion.uiHandler(Api37Controller.class).getName());
+        assertThrows(NoSuchFieldException.class,()->RotationSuggestion.uiHandler(InvalidController.class));
+    }
     private static void set(Object target,String name,Object value)throws Exception {
         Field field=target.getClass().getDeclaredField(name);field.setAccessible(true);field.set(target,value);
     }

@@ -104,7 +104,8 @@ public final class LandscapeShade {
             }));
             // Install the shared getter before dropping compiled copies in all consumers.
             if (!module.deoptimize(updateResources)) throw new IllegalStateException("shade update deoptimize");
-            deoptimizeCallers(module, loader);
+            Class<?> qs = Class.forName("com.android.systemui.shade.QuickSettingsControllerImpl", false, loader);
+            deoptimizeCallers(module, loader, qsUpdateInPanel(panel, qs, controller));
             ComposeShadeLayout.install(module, loader, hooks,
                     value -> ready && forceSplit(enabled, value.getConfiguration()));
             ready = true;
@@ -138,13 +139,45 @@ public final class LandscapeShade {
         "shade.transition.LargeScreenShadeInterpolatorImpl",
         "statusbar.AbstractLockscreenShadeTransitionController", "statusbar.policy.RemoteInputQuickSettingsDisabler"
     };
-    private static void deoptimizeCallers(XposedModule module, ClassLoader loader) throws Exception {
-        for (int i = 0; i < CALLERS.length; i++) {
-            String[] caller = CALLERS[i];
+    static final String[][] API35_CALLERS = {
+        {"shade.NotificationsQSContainerController", "updateResources"},
+        {"media.controls.ui.controller.KeyguardMediaController$2", "onConfigChanged"},
+        {"media.controls.ui.controller.MediaHierarchyManager$1", "onConfigChanged"},
+        {"shade.transition.LargeScreenShadeInterpolatorImpl$1", "onConfigChanged"},
+        {"statusbar.AbstractLockscreenShadeTransitionController$1", "onConfigChanged"},
+        {"statusbar.LockscreenShadeTransitionController", "updateResources$8"},
+        {"statusbar.notification.stack.NotificationStackScrollLayout", "updateSplitNotificationShade"},
+        {"statusbar.notification.stack.domain.interactor.SharedNotificationContainerInteractor$special$$inlined$map$1$2", "emit"},
+        {"statusbar.policy.RemoteInputQuickSettingsDisabler", "onConfigChanged"},
+        {"qs.QSPanelControllerBase$1", "onConfigurationChange"},
+        {"statusbar.NotificationShadeDepthController$2", "onConfigChanged"}
+    };
+
+    /** The archived API35 panel contains both split decisions after QS updateResources was inlined. */
+    static boolean qsUpdateInPanel(Class<?> panel, Class<?> qs, Class<?> controller) throws Exception {
+        Method update;
+        try { update = qs.getDeclaredMethod("updateResources"); }
+        catch (NoSuchMethodException inlined) {
+            for (Object[] target : new Object[][]{
+                    {panel, "mQsController", qs}, {qs, "mSplitShadeStateController", controller},
+                    {qs, "mResources", Resources.class}, {qs, "mSplitShadeEnabled", boolean.class}}) {
+                Field field = ((Class<?>) target[0]).getDeclaredField((String) target[1]);
+                if (field.getType() != target[2] || Modifier.isStatic(field.getModifiers()))
+                    throw new NoSuchFieldException("inlined QS " + target[1]);
+            }
+            return true;
+        }
+        if (update.getReturnType() != void.class || Modifier.isStatic(update.getModifiers()))
+            throw new NoSuchMethodException("QS updateResources signature");
+        return false;
+    }
+
+    private static void deoptimizeCallers(XposedModule module, ClassLoader loader, boolean qsInPanel) throws Exception {
+        for (String[] caller : qsInPanel ? API35_CALLERS : CALLERS) {
             try {
                 Class<?> owner = Class.forName("com.android.systemui." + caller[0], false, loader);
                 Class<?>[] params = switch (caller[1]) {
-                    case "onConfigChanged" -> new Class<?>[]{Configuration.class};
+                    case "onConfigChanged", "onConfigurationChange" -> new Class<?>[]{Configuration.class};
                     case "emit" -> new Class<?>[]{Object.class, Class.forName("kotlin.coroutines.Continuation", false, loader)};
                     case "invoke" -> new Class<?>[]{Object.class, Object.class};
                     default -> new Class<?>[0];
@@ -152,7 +185,8 @@ public final class LandscapeShade {
                 if (!module.deoptimize(owner.getDeclaredMethod(caller[1], params)))
                     throw new IllegalStateException("deoptimize returned false");
             } catch (Exception failure) {
-                if (i < 2) throw failure; // QS and container must agree with the main panel.
+                if (caller[0].equals("shade.QuickSettingsControllerImpl")
+                        || caller[0].equals("shade.NotificationsQSContainerController")) throw failure;
                 note("SHADE_CALLER_UNAVAILABLE " + caller[0] + " " + failure.getClass().getSimpleName());
             }
         }

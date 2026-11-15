@@ -57,21 +57,22 @@ public final class SignalDisplay {
             emergencyOnly=ServiceState.class.getDeclaredMethod("isEmergencyOnly");emergencyOnly.setAccessible(true);
             if(emergencyOnly.getReturnType()!=boolean.class)throw new NoSuchMethodException("emergency state");
             signalDrawable=Class.forName("com.android.settingslib.graph.SignalDrawable",false,loader);
-            cellular=Class.forName("com.android.systemui.statusbar.pipeline.mobile.domain.model.SignalIconModel$CellularTypeIconModel$Cellular",false,loader);
-            Class<?> binder=Class.forName("com.android.systemui.statusbar.pipeline.mobile.ui.binder.MobileIconBinder$bind$1$2$1$2$2",false,loader);
-            Class<?> continuation=Class.forName("kotlin.coroutines.Continuation",false,loader);
-            Method emit=binder.getDeclaredMethod("emit",Object.class,continuation);
-            Field id=field(binder,"$r8$classId"),drawable=field(binder,"$mobileDrawable"),viewModel=field(binder,"$viewModel");
-            Method sub=viewModel.getType().getMethod("getSubscriptionId");
-            Class<?> pair=Class.forName("kotlin.Pair",false,loader);
-            Field second=field(pair,"second");
-            Field changing=field(cellular,"carrierNetworkChange");
+            SignalDisplayTargets targets=SignalDisplayTargets.resolve(loader);
+            cellular=targets.cellular;
+            Method emit=targets.emit,sub=targets.subscription;
+            Field id=targets.id,drawable=targets.drawable,viewModel=targets.viewModel;
             // Resolve every required target before hooks; unsupported ROMs remain native.
             List<Callback> callbacks=new ArrayList<>();
             for(String[] target:new String[][]{
                 {"MobileConnectionRepositoryImpl$callbackEvents$1$1$callback$1","$this_run"},
                 {"MobileConnectionRepositoryKairosImpl$callbackEvents$1$2$callback$1","this$0"}}){
-                Class<?> c=Class.forName("com.android.systemui.statusbar.pipeline.mobile.data.repository.prod."+target[0],false,loader);
+                Class<?> c;
+                try{c=Class.forName("com.android.systemui.statusbar.pipeline.mobile.data.repository.prod."+target[0],false,loader);}
+                catch(ClassNotFoundException absent){
+                    // API35 has only the standard repository; a present but incompatible Kairos still fails preflight.
+                    if(target[0].startsWith("MobileConnectionRepositoryKairosImpl"))continue;
+                    throw absent;
+                }
                 Field repo=field(c,target[1]),subscription=field(repo.getType(),"subId");
                 callbacks.add(new Callback(repo,subscription,
                     c.getDeclaredMethod("onSignalStrengthsChanged",SignalStrength.class),
@@ -84,9 +85,9 @@ public final class SignalDisplay {
                     BINDING.remove();
                     try{
                     Object value=chain.getArg(0),d=drawable.get(chain.getThisObject());
-                    if(id.getInt(chain.getThisObject())==0&&pair.isInstance(value)&&signalDrawable.isInstance(d)){
-                        Object model=second.get(value);
-                        if(cellular.isInstance(model)&&!changing.getBoolean(model)){
+                    if(id.getInt(chain.getThisObject())==0&&signalDrawable.isInstance(d)){
+                        Object model=targets.model(value);
+                        if(model!=null){
                             int subscription=(Integer)sub.invoke(viewModel.get(chain.getThisObject()));
                             if(SubscriptionManager.isValidSubscriptionId(subscription))BINDING.set(new Binding((Drawable)d,subscription));
                             else forget((Drawable)d);
