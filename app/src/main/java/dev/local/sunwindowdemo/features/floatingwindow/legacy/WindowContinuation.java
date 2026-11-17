@@ -72,7 +72,14 @@ final class WindowContinuation {
                 boolean nativeVisible=(Boolean)chain.proceed();return nativeVisible||engine.continueHiddenActivity(chain.getThisObject());
             }));
             // Callers may already contain ART-inlined visibility checks.
-            module.deoptimize(a.method(a.activity,"updateAndCheckVisibility",boolean.class,boolean.class));
+            try{module.deoptimize(a.method(a.activity,"updateAndCheckVisibility",boolean.class,boolean.class));}
+            catch(NoSuchMethodException legacy){
+                Class<?> visibility=Class.forName("com.android.server.wm.EnsureActivitiesVisibleHelper",false,a.task.getClassLoader());
+                for(Method caller:new Method[]{a.method(a.activity,"shouldBeVisible",boolean.class,boolean.class),
+                        a.method(visibility,"setActivityVisibilityState",a.activity,a.activity,boolean.class),
+                        a.method(visibility,"process",a.activity,boolean.class)})
+                    if(!module.deoptimize(caller))throw new IllegalStateException("native visibility caller deoptimize");
+            }
             engine.continuationReady();log.accept("EDGE_CONTINUATION_READY hooks="+hooks.size());
         }catch(Throwable failure){
             for(var hook:hooks)try{hook.unhook();}catch(Throwable ignored){}

@@ -45,8 +45,8 @@ public final class SunWindowModule extends XposedModule {
                 return chain.proceed();
             }));
             handles.add(hook(a.systemBars).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
-                if((Boolean)chain.getArg(3)&&engine.preserveImmersive(chain.getThisObject(),chain.getArg(0))){
-                    return chain.proceed(new Object[]{chain.getArg(0),chain.getArg(1),chain.getArg(2),false});
+                if((Boolean)chain.getArg(a.systemBars.getParameterCount()-1)&&engine.preserveImmersive(chain.getThisObject(),chain.getArg(0))){
+                    return chain.proceed(FrameworkVariants.withoutFreeform(chain.getArgs().toArray()));
                 }
                 return chain.proceed();
             }));
@@ -260,10 +260,13 @@ public final class SunWindowModule extends XposedModule {
                 Class.forName("android.window.RemoteTransition"),transition,int.class};
             java.lang.reflect.Method startResult;
             try{startResult=a.method(starter,"handleStartResult",resultParameters);}
-            catch(NoSuchMethodException newer){
-                resultParameters=java.util.Arrays.copyOf(resultParameters,8);
-                resultParameters[7]=Class.forName("com.android.server.wm.ActivityCallerState$CallerInfo",false,p.getClassLoader());
-                startResult=a.method(starter,"handleStartResult",resultParameters);
+            catch(NoSuchMethodException different){
+                try{startResult=a.method(starter,"handleStartResult",java.util.Arrays.copyOf(resultParameters,6));}
+                catch(NoSuchMethodException newer){
+                    resultParameters=java.util.Arrays.copyOf(resultParameters,8);
+                    resultParameters[7]=Class.forName("com.android.server.wm.ActivityCallerState$CallerInfo",false,p.getClassLoader());
+                    startResult=a.method(starter,"handleStartResult",resultParameters);
+                }
             }
             handles.add(hook(startResult)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{

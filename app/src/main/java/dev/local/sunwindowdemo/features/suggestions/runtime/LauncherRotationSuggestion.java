@@ -83,7 +83,7 @@ final class LauncherRotationSuggestion {
             Field button=controller.getDeclaredField("mRotationButton"),context=controller.getDeclaredField("mContext"),target=controller.getDeclaredField("mLastRotationSuggestion");
             Method state=controller.getDeclaredMethod("setRotateSuggestionButtonState",boolean.class,boolean.class);
             Method current=button.getType().getMethod("getCurrentView"),hide=button.getType().getMethod("hide");
-            Field pending=controller.getDeclaredField("mPendingRotationSuggestion"),handler=controller.getDeclaredField("mUiHandler"),cancel=controller.getDeclaredField("mCancelPendingRotationProposal");
+            Field pending=controller.getDeclaredField("mPendingRotationSuggestion"),handler=RotationSuggestion.uiHandler(controller),cancel=controller.getDeclaredField("mCancelPendingRotationProposal");
             pending.setAccessible(true);handler.setAccessible(true);cancel.setAccessible(true);
             button.setAccessible(true);context.setAccessible(true);target.setAccessible(true);state.setAccessible(true);
             module.hook(state).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{

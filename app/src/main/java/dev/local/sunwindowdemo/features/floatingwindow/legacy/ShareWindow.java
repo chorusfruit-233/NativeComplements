@@ -68,13 +68,18 @@ final class ShareWindow {
             Method method;
             int taskArgument=6;
             try{method=a.method(starter,"startActivityUnchecked",parameters);}
-            catch(NoSuchMethodException newer){
-                Class<?>[] next=new Class<?>[16];
-                System.arraycopy(parameters,0,next,0,6);
-                next[6]=Class.forName("com.android.server.wm.TaskDisplayArea",false,loader);
-                System.arraycopy(parameters,6,next,7,8);
-                next[15]=Class.forName("com.android.server.wm.ActivityCallerState$CallerInfo",false,loader);
-                method=a.method(starter,"startActivityUnchecked",next);parameters=next;taskArgument=7;
+            catch(NoSuchMethodException different){
+                try{
+                    Class<?>[] legacy=java.util.Arrays.copyOf(parameters,13);
+                    method=a.method(starter,"startActivityUnchecked",legacy);parameters=legacy;
+                }catch(NoSuchMethodException newer){
+                    Class<?>[] next=new Class<?>[16];
+                    System.arraycopy(parameters,0,next,0,6);
+                    next[6]=Class.forName("com.android.server.wm.TaskDisplayArea",false,loader);
+                    System.arraycopy(parameters,6,next,7,8);
+                    next[15]=Class.forName("com.android.server.wm.ActivityCallerState$CallerInfo",false,loader);
+                    method=a.method(starter,"startActivityUnchecked",next);parameters=next;taskArgument=7;
+                }
             }
             final int taskIndex=taskArgument,flagsIndex=taskArgument+4,argumentCount=parameters.length;
             java.lang.reflect.Field optionsField=a.field(starter,"mOptions");

@@ -11,7 +11,7 @@ android {
         applicationId = "dev.nativecomplements.module"
         minSdk = 34
         targetSdk = 37
-        versionCode = 139
+        versionCode = 140
         versionName = "0.10.0"
     }
     flavorDimensions += "product"

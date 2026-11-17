@@ -20,7 +20,7 @@ final class AndroidWindowAdmission {
         throw new IllegalStateException(rejection.message);
     }
     void validate(Object task,boolean allowTransition)throws Exception{
-        require(WindowAdmission.opaque(a.bool(task,"isForceOpaque")));
+        require(WindowAdmission.opaque(a.forceOpaque(task)));
         boolean multi=(Boolean)a.field(atm,"mSupportsMultiWindow");
         require(WindowAdmission.capability(multi,multi&&(Boolean)a.field(atm,"mSupportsFreeformWindowManagement")));
         boolean root=a.bool(task,"isRootTask"),leaf=root&&a.bool(task,"isLeafTask"),attached=leaf&&a.bool(task,"isAttached");
@@ -35,7 +35,7 @@ final class AndroidWindowAdmission {
         try{
             boolean freeform=(Boolean)a.call(task,"supportsFreeformInDisplayArea",new Class<?>[]{a.tda},area);
             boolean valid=freeform&&(Boolean)a.call(area,"isValidWindowingMode",new Class<?>[]{int.class,a.activity,a.task},5,null,task);
-            boolean bounds=valid&&a.bool(task,"isOverrideBoundsAllowed"),mode=bounds&&a.bool(task,"isOverrideWindowingModeAllowed");
+            boolean bounds=valid&&a.overrideBoundsAllowed(task),mode=bounds&&a.overrideModeAllowed(task);
             require(WindowAdmission.resize(new WindowAdmission.Resize(freeform,valid,bounds,mode)));
         }finally{if(previous==null)resizeCandidate.remove();else resizeCandidate.set(previous);}
     }

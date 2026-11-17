@@ -4,7 +4,7 @@
 
 使用原生 Android 设置风格，支持系统动态颜色和深色模式。不依赖无障碍服务，不接管默认拨号或桌面，也不需要给普通应用逐个添加作用域。
 
-> 当前运行源码版本：**0.9.48-fixes-test2**（versionCode 138）。目前暂停新功能开发，先整理跨系统接入与独立小窗边界，见[接入与架构索引](<docs/adaptation/README.md>)。这是个人维护的系统适配项目，不是 Flyme 或 SunOS 功能的完整移植，也不保证兼容所有类原生 ROM。
+> 当前源码版本：**0.10.0**（versionCode 140），提供同源完整版与独立小窗版。已按 OnePlus 6T 的 LineageOS 22.2 / 20261110 / Android 15 实际系统组件补充接口适配，真机回归待做，详见[适配证据与范围](<docs/adaptation/system-features.md>)。小窗解耦仍在实施，不保证兼容所有类原生 ROM。
 
 ## 下载与交流
 
@@ -14,13 +14,13 @@
 
 ## 安装要求
 
-需要已 root、安装兼容现代 libxposed API 101 的 LSPosed 环境。当前主要针对已核对的 **Android 17 / API 37** 系统接口适配；最低安装版本为 Android 14，但能安装不等于所有功能可用。
+需要已 root、安装兼容现代 libxposed API 101 的 LSPosed 环境。接口证据覆盖已归档的 API37 构建及指定的 fajita LineageOS 22.2 / API35 构建；最低安装版本为 Android 14，但能安装不等于所有功能可用。
 
 1. 安装 APK，在 LSPosed 中启用“类原生补全计划”。
-2. 勾选模块既定的三个作用域：**系统框架、系统界面、Pixel 桌面**。
+2. 按模块声明启用可用宿主：**系统框架、系统界面、受支持桌面**；完整版另含 **Telecom**。
 3. 自行重启手机后，进入模块按需开启功能。
 
-作用域对应 `system`、`com.android.systemui`、`com.google.android.apps.nexuslauncher`。其他桌面不代表已适配。升级请使用相同签名的 APK，不要为了升级先卸载，以免丢失设置。
+完整版声明 `system`、`com.android.systemui`、`com.google.android.apps.nexuslauncher`、`com.android.launcher3`、`com.android.server.telecom`；小窗版不含 Telecom。这份 LineageOS 的 Trebuchet 实际包名是 `com.android.launcher3`。其他桌面不代表已适配，小窗仍要求系统原生 Freeform 能力，模块不自动改设置。升级请使用相同签名的 APK；本轮 debug 签名与上次 debug 包相同，与原发行证书不同，不能直接覆盖原签名安装。
 
 ## 功能全览
 
@@ -100,6 +100,11 @@
 “关于 → 诊断日志”支持主动开始记录、复现、停止并导出有限的模块事件，不是完整系统日志，也不会自动上传。反馈时请说明机型、ROM／Android 版本、模块版本和复现步骤，公开日志前注意检查个人信息。
 
 ## 最近更新
+
+**0.10.0 / code140**
+
+- 按用户提供的 fajita LineageOS 22.2 ROM 核对 framework/services、SystemUI、Trebuchet 与 Telecom，补充旧版原生接口和宿主身份，保留 current/QPR2 路径。
+- 同源 full/window 两个 release/R8 安装包采用独立的本地 Android Debug 证书；接口检查、单元测试与真机结果分别记录于[适配说明](<docs/adaptation/system-features.md>)。
 
 **0.9.48-fixes-test2**
 

@@ -16,6 +16,13 @@ import static org.junit.Assert.*;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
 public class DrawerMonetTest {
+    @Test public void legacyDrawerThemeNeedsBothNativeThemeAndTheExactBindingScope(){
+        assertTrue(DrawerMonet.legacyTheme(false,true,true,true));
+        assertFalse(DrawerMonet.legacyTheme(false,false,true,true));
+        assertFalse(DrawerMonet.legacyTheme(false,true,false,true));
+        assertFalse(DrawerMonet.legacyTheme(false,true,true,false));
+        assertTrue(DrawerMonet.legacyTheme(true,false,false,false));
+    }
     private final Context context = RuntimeEnvironment.getApplication();
     @Before public void clear() { ShadeStore.preferences(context).edit().clear().commit(); }
     @After public void uid() { ShadowBinder.setCallingUid(Process.myUid()); }
@@ -29,8 +36,10 @@ public class DrawerMonetTest {
         ShadeStore.setDrawerMonet(context, false);
         assertFalse(ShadeStore.drawerMonet(context));
         var intents = Shadows.shadowOf(RuntimeEnvironment.getApplication()).getBroadcastIntents();
-        assertEquals(ShadeStore.CHANGED, intents.get(intents.size()-1).getAction());
-        assertEquals(IconLayerStore.LAUNCHER, intents.get(intents.size()-1).getPackage());
+        assertEquals(4,intents.size());
+        assertEquals(IconLayerStore.LAUNCHER,intents.get(2).getPackage());
+        assertEquals("com.android.launcher3",intents.get(3).getPackage());
+        for(var intent:intents)assertEquals(ShadeStore.CHANGED,intent.getAction());
     }
 
     @Test public void launcherGetsOnlyProjectionAndUnknownUidCannotReadOrWrite() {

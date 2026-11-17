@@ -17,7 +17,7 @@ public final class NavbarProvider extends ContentProvider {
         int uid = Binder.getCallingUid();
         if (uid != getContext().getApplicationInfo().uid) {
             boolean allowed = false;
-            for (String owner : new String[]{"com.android.systemui", "com.google.android.apps.nexuslauncher"}) {
+            for (String owner : new String[]{"com.android.systemui", "com.google.android.apps.nexuslauncher", "com.android.launcher3"}) {
                 try {
                     if (uid == getContext().getPackageManager().getApplicationInfo(owner, 0).uid) allowed = true;
                 } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {}

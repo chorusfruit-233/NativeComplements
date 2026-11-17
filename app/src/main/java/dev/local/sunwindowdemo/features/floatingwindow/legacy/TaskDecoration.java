@@ -45,7 +45,6 @@ final class TaskDecoration {
         a.method(t,"remove",SurfaceControl.class);a.method(t,"reparent",SurfaceControl.class,SurfaceControl.class);
         Class<?> controller=a.field(a.wc,"mTransitionController").getType();
         a.method(controller,"isPlaying");a.method(controller,"isCollecting");
-        a.field(controller,"mBuildingTransitionLayers");
         a.method(a.task,"getTopVisibleAppMainWindow");
         Class<?> w=Class.forName("com.android.server.wm.WindowState",false,a.task.getClassLoader());
         a.method(w,"isDrawn");a.method(w,"isVisible");
@@ -87,7 +86,7 @@ final class TaskDecoration {
     void order(Object task,Object parent,Object t) throws Exception {
         Object controller=a.field(task,"mTransitionController");
         if(a.bool(controller,"isPlaying")||a.bool(controller,"isCollecting")
-            ||(Boolean)a.field(controller,"mBuildingTransitionLayers"))return;
+            ||a.buildingTransitionLayers(controller))return;
         // Plain assignChildLayers skips root tasks with Shell transitions enabled.
         // The native finish helper enables ordering and rewrites every sibling's
         // cached layer, so a former fullscreen task cannot retain a stale higher Z.

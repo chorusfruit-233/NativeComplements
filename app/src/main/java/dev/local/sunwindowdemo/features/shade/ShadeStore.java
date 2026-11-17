@@ -52,9 +52,7 @@ public final class ShadeStore {
 
     public static void setDrawerMonet(Context context, boolean enabled) {
         preferences(context).edit().putBoolean("drawer_monet", enabled).apply();
-        context.sendBroadcast(new Intent(CHANGED).setPackage(
-                dev.local.sunwindowdemo.features.iconlayers.IconLayerStore.LAUNCHER), null,
-                BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle());
+        dev.local.sunwindowdemo.core.LauncherHosts.broadcast(context,new Intent(CHANGED),true);
     }
 
     public static int iconScale(Context context, boolean notification) {

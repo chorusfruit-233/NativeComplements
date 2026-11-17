@@ -1,6 +1,7 @@
 package dev.local.sunwindowdemo.features.iconlayers;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.*;
 import io.github.libxposed.api.*;
 import java.lang.reflect.*;
@@ -13,6 +14,9 @@ final class LauncherThemeReporter {
     private Object singleton;
     private Method get;
     private Field state,controller;
+    private Method nativeThemed,nativePreferences;
+    private SharedPreferences launcherPreferences;
+    private SharedPreferences.OnSharedPreferenceChangeListener preferenceListener;
     private Context context;
     private Handler worker;
     private HandlerThread thread;
@@ -21,7 +25,19 @@ final class LauncherThemeReporter {
 
     LauncherThemeReporter(Consumer<Boolean> listener){this.listener=listener;}
     void install(XposedModule module,ClassLoader loader)throws ReflectiveOperationException{
-        Class<?> theme=Class.forName("com.android.launcher3.graphics.ThemeManager",false,loader);
+        Class<?> theme;
+        try{theme=Class.forName("com.android.launcher3.graphics.ThemeManager",false,loader);}
+        catch(ClassNotFoundException legacy){
+            Class<?> themes=Class.forName("com.android.launcher3.util.Themes",false,loader);
+            Class<?> prefs=Class.forName("com.android.launcher3.LauncherPrefs",false,loader);
+            nativeThemed=themes.getDeclaredMethod("isThemedIconEnabled",Context.class);
+            nativePreferences=prefs.getDeclaredMethod("getPrefs",Context.class);
+            if(nativeThemed.getReturnType()!=boolean.class||!Modifier.isStatic(nativeThemed.getModifiers())
+                ||nativePreferences.getReturnType()!=SharedPreferences.class||!Modifier.isStatic(nativePreferences.getModifiers()))
+                throw new NoSuchMethodException("native launcher theme preferences");
+            try{installAttach(module);}catch(RuntimeException|ReflectiveOperationException failure){close();throw failure;}
+            return;
+        }
         singleton=theme.getField("INSTANCE").get(null);
         get=singleton.getClass().getMethod("get",Context.class);
         state=theme.getField("iconState");controller=state.getType().getField("themeController");
@@ -32,23 +48,39 @@ final class LauncherThemeReporter {
                 // ThemeManager may still be under construction: read this instance, never its singleton.
                 refresh(chain.getThisObject());return result;
             }));
-            hooks.add(module.hook(android.app.Application.class.getDeclaredMethod("attach",Context.class))
+            installAttach(module);
+        }catch(RuntimeException|ReflectiveOperationException failure){close();throw failure;}
+    }
+    private void installAttach(XposedModule module)throws ReflectiveOperationException{
+        hooks.add(module.hook(android.app.Application.class.getDeclaredMethod("attach",Context.class))
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{
                     Object result=chain.proceed();
                     try{connect((Context)chain.getThisObject());}
                     catch(RuntimeException failure){close();android.util.Log.w("NcLauncherTheme","theme connection failed",failure);}
                     return result;
                 }));
-        }catch(RuntimeException|ReflectiveOperationException failure){close();throw failure;}
     }
     synchronized void connect(Context app){
         if(context!=null)return;
         Context application=app.getApplicationContext();context=application!=null?application:app;
         thread=new HandlerThread("NcLauncherTheme");thread.start();worker=new Handler(thread.getLooper());
-        main.post(()->refresh(null));
+        main.post(()->{
+            if(context==null)return;
+            if(nativePreferences!=null)try{
+                launcherPreferences=(SharedPreferences)nativePreferences.invoke(null,context);
+                preferenceListener=(prefs,key)->{
+                    if(key==null||"themed_icons".equals(key))main.post(()->refresh(null));
+                };
+                launcherPreferences.registerOnSharedPreferenceChangeListener(preferenceListener);
+            }catch(ReflectiveOperationException|RuntimeException failure){
+                close();android.util.Log.w("NcLauncherTheme","native preference observation failed",failure);return;
+            }
+            refresh(null);
+        });
     }
     private boolean read(Object manager){
         try{
+            if(nativeThemed!=null)return (Boolean)nativeThemed.invoke(null,context);
             if(manager==null)manager=get.invoke(singleton,context);
             Object iconState=manager==null?null:state.get(manager);
             return iconState!=null&&controller.get(iconState)!=null;
@@ -69,6 +101,8 @@ final class LauncherThemeReporter {
         }catch(RuntimeException failure){android.util.Log.w("NcLauncherTheme","theme report failed",failure);}
     }
     synchronized void close(){
+        if(launcherPreferences!=null&&preferenceListener!=null)launcherPreferences.unregisterOnSharedPreferenceChangeListener(preferenceListener);
+        launcherPreferences=null;preferenceListener=null;
         for(var hook:hooks)try{hook.unhook();}catch(Throwable ignored){}
         hooks.clear();
         main.removeCallbacksAndMessages(null);

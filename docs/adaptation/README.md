@@ -1,8 +1,10 @@
 # 跨系统接入与小窗拆分索引
 
-## 当前状态：0.10.0 / code139 实施中
+## 当前状态：0.10.0 / code140 实施中
 
-当前第一轮小窗解耦与同源独立小窗版正在实施，版本为 `0.10.0` / versionCode `139`，以 [构建配置](<../../app/build.gradle.kts>) 为准。**不是全部解耦完成、独立版可用或 LOS 兼容声明。** Alive 与其他功能重构仍暂缓。
+2026-11-17 用户提供完整 fajita LineageOS 22.2 ROM 后，本轮按实际 framework/services、Trebuchet 与 Telecom 补充接口适配；详见[指定 ROM 证据与打包说明](<system-features.md>)。当前 [full scope](<../../app/src/full/resources/META-INF/xposed/scope.list>) 为 system/SystemUI/Pixel/AOSP Launcher/Telecom 共5项，[window scope](<../../app/src/window/resources/META-INF/xposed/scope.list>) 为前4项；下方早期提交的三 scope 记录按历史阶段阅读。未新增设备效果保证，原解耦剩余任务不变。
+
+当前第一轮小窗解耦与同源独立小窗版正在实施，版本为 `0.10.0` / versionCode `140`，以 [构建配置](<../../app/build.gradle.kts>) 为准。**不是全部解耦完成、独立版可用或 LOS 兼容声明。** Alive 与其他功能重构仍暂缓。
 
 ### 已提交并 push 的边界
 
@@ -14,7 +16,7 @@
 
 - C1 接管规则已落 [WindowAdmission](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/WindowAdmission.java>) 与 [AndroidWindowAdmission](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/AndroidWindowAdmission.java>)；共用同一 [WindowEngine](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/WindowEngine.java>)，不是复制引擎。
 - Gradle 增加 `full` / `window` productFlavors；[full ModuleApp](<../../app/src/full/java/dev/local/sunwindowdemo/navigation/ModuleApp.kt>) 从 main 迁出，[Page](<../../app/src/main/java/dev/local/sunwindowdemo/navigation/Page.kt>) 仍共享，[window ModuleApp](<../../app/src/window/java/dev/local/sunwindowdemo/navigation/ModuleApp.kt>) 是窄小窗入口。
-- 注册表改为 [full java_init.list](<../../app/src/full/resources/META-INF/xposed/java_init.list>) 与 [window java_init.list](<../../app/src/window/resources/META-INF/xposed/java_init.list>)；window 为 4 entry（3 个小窗入口 + [LauncherThemeModule](<../../app/src/main/java/dev/local/sunwindowdemo/features/iconlayers/LauncherThemeModule.java>)），[scope.list](<../../app/src/main/resources/META-INF/xposed/scope.list>) 仍在 main、保留原三个系统作用域。
+- 注册表改为 [full java_init.list](<../../app/src/full/resources/META-INF/xposed/java_init.list>) 与 [window java_init.list](<../../app/src/window/resources/META-INF/xposed/java_init.list>)；window 为 4 entry（3 个小窗入口 + [LauncherThemeModule](<../../app/src/main/java/dev/local/sunwindowdemo/features/iconlayers/LauncherThemeModule.java>)），[scope.list](<../../app/src/full/resources/META-INF/xposed/scope.list>) 仍在 main、保留原三个系统作用域。
 - [HostExtras](<../../app/src/main/java/dev/local/sunwindowdemo/HostExtras.java>) 契约配合 [full ProductFeatures](<../../app/src/full/java/dev/local/sunwindowdemo/ProductFeatures.java>) / [window ProductFeatures](<../../app/src/window/java/dev/local/sunwindowdemo/ProductFeatures.java>) 真实源集隔离非小窗宿主实现，不只是隐藏页面或加运行时布尔量。window 的 [WindowIconProvider](<../../app/src/window/java/dev/local/sunwindowdemo/features/iconlayers/WindowIconProvider.java>) 是 native mono / Monet 的窄桥接，不带抽屉、图标库或生成入口；不是 full 图标能力等价品。
 
 推送 receipt 已确认 `bd3aafb..a6da12a` 到 main。该阶段完整单测 **full 353 / window 348，均 0 失败**，双 release/R8 及 APK 原签名、身份、三系统 scope、四/七入口、快捷方式与禁止非小窗 Hook 的 DEX 边界核验通过；345 pass 是更早阶段证据。未操作设备，生成包仍是阶段检查产物。

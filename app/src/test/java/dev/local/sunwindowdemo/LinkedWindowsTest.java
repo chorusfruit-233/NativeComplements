@@ -258,10 +258,13 @@ public class LinkedWindowsTest {
             assertTrue("Broadcast must wait for the current window operation to finish",sent.isEmpty());
         }
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-        assertEquals(1,sent.size());
-        assertEquals(WindowEngine.HISTORY,sent.get(0).getAction());
-        assertEquals(LauncherGuard.PACKAGE,sent.get(0).getPackage());
-        assertEquals(Wire.PROTOCOL,sent.get(0).getIntExtra("protocol",0));
-        assertArrayEquals(new int[0],sent.get(0).getIntArrayExtra("hiddenTaskIds"));
+        assertEquals(2,sent.size());
+        assertEquals(java.util.Set.of(LauncherGuard.PACKAGE,"com.android.launcher3"),
+            sent.stream().map(android.content.Intent::getPackage).collect(java.util.stream.Collectors.toSet()));
+        for(var message:sent){
+            assertEquals(WindowEngine.HISTORY,message.getAction());
+            assertEquals(Wire.PROTOCOL,message.getIntExtra("protocol",0));
+            assertArrayEquals(new int[0],message.getIntArrayExtra("hiddenTaskIds"));
+        }
     }
 }

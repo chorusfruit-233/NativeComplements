@@ -15,9 +15,9 @@ import io.github.libxposed.api.*;
 import java.lang.reflect.*;
 import java.util.*;
 
-/** Android 17 Telecom filtering, independent of window hooks and the default screening app. */
+/** Native Telecom filtering, independent of window hooks and the default screening app. */
 public final class CallBlockingModule extends XposedModule {
-    private boolean eligible,attempted;
+    private boolean eligible,telecom,bootAttempted,packageAttempted,installed;
     private volatile Bundle config=Bundle.EMPTY;
     private Context context;
     private Handler worker;
@@ -25,20 +25,34 @@ public final class CallBlockingModule extends XposedModule {
     private volatile Contacts contacts=new Contacts(null,0,-1);
     private final CallBlockingRules.Repeats repeats=new CallBlockingRules.Repeats();
     private Method managerContext,registrar,account,subscription,incoming,selfManaged,emergency,ecbm,
-        hasProperty,target,handle,state,user,builderFrom,allow,reject,addLog,notification,audio,silence,
+        hasProperty,target,handle,state,user,allow,reject,addLog,notification,audio,silence,
         blockReason,appName,component,response,build,emergencySms,presentation;
     private Field nativeAllows;
+    private CallFilteringCopy filteringCopy;
     private final Set<Object> recorded=Collections.newSetFromMap(new WeakHashMap<>());
     private long lastFailure;
     private HostSnapshot snapshot;
 
-    @Override public void onModuleLoaded(ModuleLoadedParam p){eligible=p.isSystemServer();}
+    @Override public void onModuleLoaded(ModuleLoadedParam p){
+        eligible=p.isSystemServer();
+        telecom=!eligible&&("com.android.server.telecom".equals(p.getProcessName())||"system".equals(p.getProcessName()));
+    }
     @Override public void onSystemServerStarting(SystemServerStartingParam p){
-        if(!eligible||attempted)return;
-        attempted=true;
+        if(!eligible||bootAttempted||installed)return;
+        bootAttempted=true;
+        // Telecom can be loaded later from its APK into the manifest's "system" process.
+        try{Class.forName("com.android.server.telecom.CallsManager",false,p.getClassLoader());}
+        catch(ClassNotFoundException laterPackage){note("CALL_BLOCKING_WAIT_TELECOM_PACKAGE");return;}
+        install(p.getClassLoader());
+    }
+    @Override public void onPackageLoaded(PackageLoadedParam p){
+        if((!eligible&&!telecom)||packageAttempted||installed||!"com.android.server.telecom".equals(p.getPackageName()))return;
+        packageAttempted=true;
+        install(p.getDefaultClassLoader());
+    }
+    private void install(ClassLoader loader){
         List<XposedInterface.HookHandle> hooks=new ArrayList<>();
         try{
-            ClassLoader loader=p.getClassLoader();
             Class<?> manager=Class.forName("com.android.server.telecom.CallsManager",false,loader);
             Class<?> call=Class.forName("com.android.server.telecom.Call",false,loader);
             Class<?> result=Class.forName("com.android.server.telecom.callfiltering.CallFilteringResult",false,loader);
@@ -55,13 +69,13 @@ public final class CallBlockingModule extends XposedModule {
             hasProperty=method(call,"hasProperty",int.class);target=method(call,"getTargetPhoneAccount");
             presentation=method(call,"getHandlePresentation");
             handle=method(call,"getHandle");state=method(call,"getState");user=method(call,"getAssociatedUser");
-            builderFrom=method(builder,"from",result);build=method(builder,"build");
+            filteringCopy=new CallFilteringCopy(result,builder);build=method(builder,"build");
             allow=method(builder,"setShouldAllowCall",boolean.class);reject=method(builder,"setShouldReject",boolean.class);
             addLog=method(builder,"setShouldAddToCallLog",boolean.class);notification=method(builder,"setShouldShowNotification",boolean.class);
             audio=method(builder,"setShouldScreenViaAudio",boolean.class);silence=method(builder,"setShouldSilence",boolean.class);
             blockReason=method(builder,"setCallBlockReason",int.class);appName=method(builder,"setCallScreeningAppName",CharSequence.class);
             component=method(builder,"setCallScreeningComponentName",String.class);
-            response=method(builder,"setCallScreeningResponse",Class.forName("android.telecom.ParcelableCallResponse",false,loader),boolean.class);
+            response=CallFilteringCopy.response(builder);
             Method filtering=method(manager,"onCallFilteringComplete",call,result,boolean.class);
             if(filtering.getReturnType()!=void.class||subscription.getReturnType()!=int.class||build.getReturnType()!=result)
                 throw new NoSuchMethodException("Telecom filter signatures");
@@ -80,7 +94,7 @@ public final class CallBlockingModule extends XposedModule {
                     // Preserve native block/ignore decisions and their screening reason/response.
                     Decision d=original!=null&&nativeAllows.getBoolean(original)?decide(chain.getThisObject(),chain.getArg(0)):null;
                     if(d!=null){
-                        Object b=builderFrom.invoke(null,chain.getArg(1));
+                        Object b=filteringCopy.copy(chain.getArg(1));
                         allow.invoke(b,false);reject.invoke(b,true);addLog.invoke(b,true);notification.invoke(b,false);
                         audio.invoke(b,false);silence.invoke(b,false);blockReason.invoke(b,1);
                         appName.invoke(b,"类原生补全");component.invoke(b,(Object)null);response.invoke(b,null,false);
@@ -95,6 +109,7 @@ public final class CallBlockingModule extends XposedModule {
                 }
                 return out;
             }));
+            installed=true;
             note("CALL_BLOCKING_HOOK_READY hooks="+hooks.size()+" version="+BuildConfig.VERSION_NAME);
         }catch(Throwable e){
             for(XposedInterface.HookHandle h:hooks)try{h.unhook();}catch(Throwable ignored){}

@@ -27,6 +27,7 @@ final class DrawerMonet {
     private Field bitmapField, themedField;
     private final Map<View, java.lang.ref.WeakReference<View>> gridIcons = new WeakHashMap<>();
     private final ThreadLocal<Boolean> binding = new ThreadLocal<>();
+    private final ThreadLocal<View> legacyBinding = new ThreadLocal<>();
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean enabled;
     private Context context;
@@ -36,6 +37,9 @@ final class DrawerMonet {
     private Method standard;
 
     void install(XposedModule module, ClassLoader loader) throws ReflectiveOperationException {
+        Class<?> lookup;
+        try{lookup=Class.forName("com.android.launcher3.icons.cache.CacheLookupFlag",false,loader);}
+        catch(ClassNotFoundException legacy){installLegacy(module,loader);return;}
         Class<?> bubble = Class.forName("com.android.launcher3.BubbleTextView", false, loader);
         Class<?> adapter = Class.forName("com.android.launcher3.allapps.BaseAllAppsAdapter", false, loader);
         Class<?> item = Class.forName("com.android.launcher3.model.data.ItemInfoWithIcon", false, loader);
@@ -49,7 +53,6 @@ final class DrawerMonet {
         standard = bubble.getDeclaredMethod("setStandardIcon", item);
         standard.setAccessible(true);
         Method create = bitmap.getDeclaredMethod("newIcon", Context.class, int.class, shape);
-        Class<?> lookup = Class.forName("com.android.launcher3.icons.cache.CacheLookupFlag", false, loader);
         updateMask = lookup.getDeclaredMethod("updateMask", int.class, boolean.class);
         Class<?> cache = Class.forName("com.android.launcher3.icons.IconCache", false, loader);
         Class<?> receiver = Class.forName("com.android.launcher3.icons.IconCache$ItemInfoUpdateReceiver", false, loader);
@@ -109,6 +112,68 @@ final class DrawerMonet {
             for (var hook : hooks) try { hook.unhook(); } catch (Throwable ignored) {}
             throw failure;
         }
+    }
+
+    /** API35 already keeps native ThemedBitmap material and exposes a per-view theme predicate. */
+    private void installLegacy(XposedModule module,ClassLoader loader)throws ReflectiveOperationException{
+        Class<?> bubble=Class.forName("com.android.launcher3.BubbleTextView",false,loader);
+        Class<?> item=Class.forName("com.android.launcher3.model.data.ItemInfoWithIcon",false,loader);
+        Class<?> adapter=Class.forName("com.android.launcher3.allapps.BaseAllAppsAdapter",false,loader);
+        Class<?> holder=Class.forName("com.android.launcher3.allapps.BaseAllAppsAdapter$ViewHolder",false,loader);
+        recycler=Class.forName("com.android.launcher3.allapps.AllAppsRecyclerView",false,loader);
+        searchRecycler=Class.forName("com.android.launcher3.allapps.SearchRecyclerView",false,loader);
+        predictionRow=Class.forName("com.android.launcher3.appprediction.PredictionRowView",false,loader);
+        appInfo=Class.forName("com.android.launcher3.model.data.AppInfo",false,loader);
+        standard=bubble.getDeclaredMethod("applyIconAndLabel",item);standard.setAccessible(true);
+        Method shouldTheme=bubble.getDeclaredMethod("shouldUseTheme");
+        Method systemTheme=Class.forName("com.android.launcher3.util.Themes",false,loader)
+                .getDeclaredMethod("isThemedIconEnabled",Context.class);
+        if(standard.getReturnType()!=void.class||shouldTheme.getReturnType()!=boolean.class
+                ||systemTheme.getReturnType()!=boolean.class||!java.lang.reflect.Modifier.isStatic(systemTheme.getModifiers()))
+            throw new NoSuchMethodException("native drawer theme predicates");
+        Method factory=null;
+        for(Method method:adapter.getDeclaredMethods())if(method.getName().equals("onCreateViewHolder")
+                &&Arrays.equals(method.getParameterTypes(),new Class<?>[]{android.view.ViewGroup.class,int.class})
+                &&method.getReturnType()==holder){
+            if(factory!=null)throw new NoSuchMethodException("ambiguous drawer holder factory");factory=method;
+        }
+        if(factory==null)throw new NoSuchMethodException("native drawer holder factory");
+        Field itemView=holder.getField("itemView");
+        if(itemView.getType()!=View.class)throw new NoSuchFieldException("drawer holder view");
+        List<XposedInterface.HookHandle> hooks=new ArrayList<>();
+        try{
+            hooks.add(module.hook(factory).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{
+                Object result=chain.proceed();
+                if(result!=null)synchronized(gridIcons){gridIcons.put((View)itemView.get(result),new java.lang.ref.WeakReference<>((View)chain.getArg(0)));}
+                return result;
+            }));
+            hooks.add(module.hook(standard).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{
+                View view=(View)chain.getThisObject(),before=legacyBinding.get();
+                View predictions=predictionParent(view);
+                if(predictions!=null)synchronized(gridIcons){gridIcons.put(view,new java.lang.ref.WeakReference<>(predictions));}
+                if(enabled&&eligibleItem(view,chain.getArg(0)))legacyBinding.set(view);else legacyBinding.remove();
+                try{return chain.proceed();}
+                finally{if(before==null)legacyBinding.remove();else legacyBinding.set(before);}
+            }));
+            hooks.add(module.hook(shouldTheme).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{
+                boolean original=(Boolean)chain.proceed();View view=(View)chain.getThisObject();
+                if(!enabled||legacyBinding.get()!=view)return original;
+                try{return legacyTheme(original,enabled,(Boolean)systemTheme.invoke(null,view.getContext()),true);}
+                catch(ReflectiveOperationException unavailable){return original;}
+            }));
+            for(Method caller:new Method[]{standard,bubble.getDeclaredMethod("applyFromApplicationInfo",appInfo),
+                    bubble.getDeclaredMethod("applyFromItemInfoWithIcon",item)})
+                if(!module.deoptimize(caller))throw new IllegalStateException("native drawer binding deoptimize");
+            for(Method bridge:adapter.getDeclaredMethods())if(bridge.getName().equals("onCreateViewHolder")&&bridge.isBridge())
+                if(!module.deoptimize(bridge))throw new IllegalStateException("native drawer factory bridge deoptimize");
+        }catch(RuntimeException|ReflectiveOperationException failure){
+            for(var hook:hooks)try{hook.unhook();}catch(Throwable ignored){}
+            throw failure;
+        }
+    }
+
+    static boolean legacyTheme(boolean original,boolean enabled,boolean systemThemed,boolean bound){
+        return original||enabled&&systemThemed&&bound;
     }
 
     static int themedFlags(int flags) { return flags | 1; }

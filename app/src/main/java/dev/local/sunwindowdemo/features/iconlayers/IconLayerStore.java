@@ -60,7 +60,7 @@ public final class IconLayerStore {
         broadcast(c,true);
     }
     private static void broadcast(Context c,boolean all) {
-        for(String host:new String[]{LAUNCHER,SYSTEM_UI,"android",dev.local.sunwindowdemo.BuildConfig.APPLICATION_ID})
+        for(String host:new String[]{LAUNCHER,dev.local.sunwindowdemo.core.LauncherHosts.AOSP,SYSTEM_UI,"android",dev.local.sunwindowdemo.BuildConfig.APPLICATION_ID})
             c.sendBroadcast(new Intent(REFRESH).setPackage(host).putExtra("all",all).addFlags(Intent.FLAG_RECEIVER_FOREGROUND));
     }
 

@@ -78,6 +78,13 @@ public class NavbarModuleTest {
         assertTrue(failures.get(0) instanceof ClassNotFoundException);
     }
 
+    @Test public void lineageLauncherUsesOnlyItsMatchingPackageAndTaskbarBackend(){
+        NavbarModule module=module();
+        module.onModuleLoaded(process("com.android.launcher3",false));
+        module.onPackageLoaded(target("com.google.android.apps.nexuslauncher"));assertEquals(1,events.size());
+        module.onPackageLoaded(target("com.android.launcher3"));assertEquals(3,events.size());
+        assertEquals("IMMERSIVE_TASKBAR_INSTALL_FAILED",events.get(2));
+    }
     @Test public void ordinaryProcessesAndSystemServerDoNotInstallNavigationHooks() {
         for (XposedModuleInterface.ModuleLoadedParam param : new XposedModuleInterface.ModuleLoadedParam[]{
                 process("app.example", false), process("com.android.systemui", true), process("system", true)}) {

@@ -24,6 +24,7 @@ import java.util.function.Supplier;
 /** Separate entry: no system_server hooks, resource-ID marking or window-engine changes. */
 public final class IconLayerModule extends XposedModule {
     private boolean eligible, installed;
+    private String launcherPackage;
     private DrawerMonet drawerMonet;
     private String acknowledgedGeneration = null;
     private final AtomicInteger epoch = new AtomicInteger();
@@ -39,11 +40,12 @@ public final class IconLayerModule extends XposedModule {
     private String lastError = "";
 
     @Override public void onModuleLoaded(ModuleLoadedParam p) {
-        eligible = !p.isSystemServer() && IconLayerStore.LAUNCHER.equals(p.getProcessName());
+        eligible = !p.isSystemServer() && dev.local.sunwindowdemo.core.LauncherHosts.isLauncher(p.getProcessName());
+        launcherPackage=eligible?p.getProcessName():null;
     }
 
     @Override public synchronized void onPackageLoaded(PackageLoadedParam p) {
-        if (!eligible || installed || !IconLayerStore.LAUNCHER.equals(p.getPackageName())) return;
+        if (!eligible || installed || !launcherPackage.equals(p.getPackageName())) return;
         installed = true;
         loader = p.getDefaultClassLoader();
         // Theme observation survives optional desktop/drawer ABI failure and installs no replacements.
@@ -115,7 +117,18 @@ public final class IconLayerModule extends XposedModule {
         Field clip = view.getDeclaredField("mClipIconView"); clip.setAccessible(true);
         Field background = clip.getType().getDeclaredField("mBackground"); background.setAccessible(true);
         Field foreground = clip.getType().getDeclaredField("mForeground"); foreground.setAccessible(true);
-        Method setIcon = view.getDeclaredMethod("setIcon", Drawable.class, Drawable.class, Supplier.class, int.class, boolean.class);
+        Method setIcon = animationSetter(view);
+        if(setIcon.getParameterCount()==4){
+            Class<?> launcher=Class.forName("com.android.launcher3.Launcher",false,loader);
+            Class<?> callback=Class.forName("com.android.launcher3.views.FloatingIconView$$ExternalSyntheticLambda5",false,loader);
+            for(Method caller:new Method[]{view.getDeclaredMethod("checkIconResult"),
+                    view.getDeclaredMethod("lambda$checkIconResult$1",android.os.CancellationSignal.class),
+                    view.getDeclaredMethod("$r8$lambda$VSxnDoJuuRfQFY4HAM9sw1ccIlg",view,android.os.CancellationSignal.class),
+                    callback.getDeclaredMethod("run"),
+                    view.getDeclaredMethod("getFloatingIconView",launcher,android.view.View.class,android.view.View.class,
+                            android.view.View.class,boolean.class,android.graphics.RectF.class,boolean.class)})
+                if(!deoptimize(caller))throw new IllegalStateException("native icon caller deoptimize");
+        }
         handles.add(hook(setIcon).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
             AdaptiveIconDrawable test = null;
             try {
@@ -234,18 +247,23 @@ public final class IconLayerModule extends XposedModule {
             Class<?> stateClass = Class.forName("com.android.launcher3.LauncherAppState", false, loader);
             Object singleton = stateClass.getField("INSTANCE").get(null);
             Object state = singleton.getClass().getMethod("get", Context.class).invoke(singleton, context);
-            Object model = stateClass.getField("model").get(state);
-            Object cache = stateClass.getField("iconCache").get(state);
+            Object model = nativeMember(stateClass,state,"model","getModel");
+            Object cache = nativeMember(stateClass,state,"iconCache","getIconCache");
             Class<?> base = Class.forName("com.android.launcher3.icons.cache.BaseIconCache", false, loader);
             Field workerField = base.getDeclaredField("workerHandler"); workerField.setAccessible(true);
             Handler cacheWorker = (Handler) workerField.get(cache);
-            Method remove = base.getDeclaredMethod("removeIconsForPkg", UserHandle.class, String.class); remove.setAccessible(true);
+            Method invalidator;
+            try{invalidator=base.getDeclaredMethod("removeIconsForPkg",UserHandle.class,String.class);}
+            catch(NoSuchMethodException legacy){invalidator=base.getDeclaredMethod("removeIconsForPkg",String.class,UserHandle.class);}
+            final Method remove=invalidator;remove.setAccessible(true);
+            final boolean packageFirst=remove.getParameterTypes()[0]==String.class;
             Object callbacks = model.getClass().getMethod("newModelCallbacks").invoke(model);
             Method changed = callbacks.getClass().getMethod("onPackageChanged", String.class, UserHandle.class);
             cacheWorker.post(() -> {
                 boolean success = true;
                 for (String pkg : packages) try {
-                    remove.invoke(cache, android.os.Process.myUserHandle(), pkg);
+                    if(packageFirst)remove.invoke(cache,pkg,android.os.Process.myUserHandle());
+                    else remove.invoke(cache,android.os.Process.myUserHandle(),pkg);
                     changed.invoke(callbacks, pkg, android.os.Process.myUserHandle());
                 } catch (Exception failure) { success = false; note("PACKAGE_REFRESH_FAILED package=" + pkg); }
                 final boolean ok = success;
@@ -270,6 +288,17 @@ public final class IconLayerModule extends XposedModule {
         }
     }
 
+    static Object nativeMember(Class<?> owner,Object instance,String field,String getter)throws ReflectiveOperationException{
+        try{return owner.getField(field).get(instance);}
+        catch(NoSuchFieldException legacy){return owner.getMethod(getter).invoke(instance);}
+    }
+    static Method animationSetter(Class<?> view)throws NoSuchMethodException{
+        Method setter;
+        try{setter=view.getDeclaredMethod("setIcon",Drawable.class,Drawable.class,Supplier.class,int.class,boolean.class);}
+        catch(NoSuchMethodException legacy){setter=view.getDeclaredMethod("setIcon",Drawable.class,Drawable.class,Supplier.class,int.class);}
+        if(setter.getReturnType()!=void.class||Modifier.isStatic(setter.getModifiers()))throw new NoSuchMethodException("native icon setter");
+        return setter;
+    }
     private void report(String status) {
         if (worker == null || context == null) return;
         worker.post(() -> {

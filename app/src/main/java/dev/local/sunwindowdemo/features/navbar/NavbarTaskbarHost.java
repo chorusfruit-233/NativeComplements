@@ -131,7 +131,7 @@ final class NavbarTaskbarHost {
     }
 
     void connect(Application app) {
-        if (!"com.google.android.apps.nexuslauncher".equals(app.getPackageName())) return;
+        if (!dev.local.sunwindowdemo.core.LauncherHosts.isLauncher(app.getPackageName())) return;
         if (Looper.myLooper() != Looper.getMainLooper()) { main.post(() -> connect(app)); return; }
         if (application != null) return;
         application = app;

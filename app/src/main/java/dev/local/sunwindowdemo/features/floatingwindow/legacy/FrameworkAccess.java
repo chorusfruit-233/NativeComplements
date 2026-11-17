@@ -13,6 +13,10 @@ final class FrameworkAccess {
     final Method systemReady, prepare, changed, freeform, lookup, focused, recentVisible, systemBars;
     final Method requestTransition,finishLayers;
     private Method playingTransition,freezerLeash;
+    private Method focusedLeaf,legacyInsets,sizeCompatGetter;
+    private Field legacyIme;
+    private Field transitionLayers;
+    private boolean nativeOverrideValidation;
     private Field surfaceFreezer;
     Method overlayVisibilityChanged;
     Field overlayHidingWindows;
@@ -42,7 +46,16 @@ final class FrameworkAccess {
         changed = method(task, "onConfigurationChanged", Configuration.class);
         freeform = method(task, "computeFreeformBounds", Rect.class, Configuration.class);
         lookup = method(root, "anyTaskForId", int.class, int.class);
-        focused = method(root, "getTopDisplayFocusedLeafTask");
+        Method focusedMethod;
+        try{focusedMethod=method(root,"getTopDisplayFocusedLeafTask");}
+        catch(NoSuchMethodException legacy){
+            focusedMethod=method(root,"getTopDisplayFocusedRootTask");
+            focusedLeaf=method(task,"getTopMostTask");
+            if(focusedLeaf.getReturnType()!=task)throw new NoSuchMethodException("native focused leaf");
+        }
+        focused=focusedMethod;
+        if(focused.getReturnType()!=task)throw new NoSuchMethodException("native focused task");
+        nativeOverrideValidation=FrameworkVariants.nativeOverrideValidation(task);
         for (Method m : new Method[]{systemReady, prepare, changed, freeform})
             if (m.getReturnType() != void.class) throw new NoSuchMethodException(m.toString());
         method(task, "setWindowingMode", int.class);
@@ -59,7 +72,12 @@ final class FrameworkAccess {
         method(task,"getRootActivity");method(activity,"attachedToProcess");method(activity,"isRelaunching");
         method(activity,"getState");method(activity,"relaunchActivityLocked",boolean.class,int.class);
         for(String name:new String[]{"intent","finishing","resultTo","results","newIntents","launchedFromUid","launchedFromPackage"})field(activity,name);
-        method(dc,"getImeWindow");field(dc,"mCurrentFocus");
+        try{method(dc,"getImeWindow");}
+        catch(NoSuchMethodException legacy){
+            legacyIme=field(dc,"mInputMethodWindow");
+            if(!legacyIme.getType().getName().equals("com.android.server.wm.WindowState"))throw new NoSuchFieldException("native IME window");
+        }
+        field(dc,"mCurrentFocus");
         method(wc,"forAllActivities",java.util.function.Consumer.class);method(activity,"getUid");
         method(wc, "getPendingTransaction"); method(wc, "getBounds");
         method(wc, "getRelativeDisplayRotation");
@@ -69,20 +87,30 @@ final class FrameworkAccess {
         method(field(wc,"mTransitionController").getType(),"setNoAnimation",wc);
         Class<?> insetsController=method(dc,"getInsetsStateController").getReturnType();
         Class<?> insetsState=method(insetsController,"getRawInsetsState").getReturnType();
-        method(insetsState,"calculateInsets",Rect.class,Rect.class,int.class,boolean.class);
+        try{method(insetsState,"calculateInsets",Rect.class,Rect.class,int.class,boolean.class);}
+        catch(NoSuchMethodException legacy){legacyInsets=method(insetsState,"calculateInsets",Rect.class,int.class,boolean.class);}
         field(dc, "mDisplayId");
         method(wc,"forAllTasks",java.util.function.Consumer.class);
         method(task,"moveToFront",String.class);
         method(task,"moveTaskToBack",task);
         Class<?> transition=Class.forName("com.android.server.wm.Transition",false,loader);
-        finishLayers=method(transition,"assignLayersForFinishTransaction",wc,SurfaceControl.Transaction.class);
+        Method layers;
+        try{layers=method(transition,"assignLayersForFinishTransaction",wc,SurfaceControl.Transaction.class);}
+        catch(NoSuchMethodException legacy){layers=method(transition,"assignLayers",wc,SurfaceControl.Transaction.class);}
+        finishLayers=layers;
         if(!Modifier.isStatic(finishLayers.getModifiers())||finishLayers.getReturnType()!=void.class)
             throw new NoSuchMethodException(finishLayers.toString());
         method(transition,"collect",wc);method(transition,"setNoAnimation",wc);
         method(transition,"addFlag",int.class);field(transition,"mType");
         method(transition,"getFlags");
-        requestTransition=method(field(wc,"mTransitionController").getType(),"requestStartTransition",
-            transition,task,Class.forName("android.window.RemoteTransition",false,loader),List.class);
+        Class<?> transitionController=field(wc,"mTransitionController").getType();
+        Method request;
+        try{request=method(transitionController,"requestStartTransition",transition,task,
+            Class.forName("android.window.RemoteTransition",false,loader),List.class);}
+        catch(NoSuchMethodException legacy){request=method(transitionController,"requestStartTransition",transition,task,
+            Class.forName("android.window.RemoteTransition",false,loader),Class.forName("android.window.TransitionRequestInfo$DisplayChange",false,loader));}
+        requestTransition=request;
+        if(request.getReturnType()!=transition)throw new NoSuchMethodException("native transition request");
         invisibleFlag=field(android.view.WindowManager.class,"TRANSIT_FLAG_INVISIBLE").getInt(null);
         if(invisibleFlag==0)throw new IllegalStateException("invalid native no-animation flag");
         method(task,"moveTaskToBackInner",task,transition);
@@ -110,17 +138,20 @@ final class FrameworkAccess {
         method(SurfaceControl.Transaction.class,"addTransactionCommittedListener",java.util.concurrent.Executor.class,
             SurfaceControl.TransactionCommittedListener.class);
         method(task,"setForceTranslucent",boolean.class);method(task,"isForceTranslucent");
-        method(task,"isForceOpaque");
+        if(!nativeOverrideValidation)method(task,"isForceOpaque");
         method(android.app.ActivityOptions.class,"setAvoidMoveToFront");
         method(root,"resumeFocusedTasksTopActivities");method(root,"ensureActivitiesVisible");
         field(task,"mLastSurfaceSize");
         field(task,"mLastTimeMoved");
         for (String name : new String[]{"getBaseIntent", "getParent", "getDisplayArea", "getActivityType", "getWindowingMode",
                 "getConfiguration", "getRequestedOverrideConfiguration", "getBounds", "isAlwaysOnTop",
-                "isOverrideBoundsAllowed", "isOverrideWindowingModeAllowed"}) method(task, name);
+                "isFocusable"}) method(task, name);
+        if(!nativeOverrideValidation){method(task,"isOverrideBoundsAllowed");method(task,"isOverrideWindowingModeAllowed");}
         method(task, "onRequestedOverrideConfigurationChanged", Configuration.class);
         Class<?> compatController=field(activity,"mAppCompatController").getType();
-        Class<?> sizeCompat=method(compatController,"getSizeCompatModePolicy").getReturnType();
+        try{sizeCompatGetter=method(compatController,"getSizeCompatModePolicy");}
+        catch(NoSuchMethodException legacy){sizeCompatGetter=method(compatController,"getAppCompatSizeCompatModePolicy");}
+        Class<?> sizeCompat=sizeCompatGetter.getReturnType();
         method(sizeCompat,"getAppCompatDisplayInsets");method(sizeCompat,"clearSizeCompatMode");
         field(method(sizeCompat,"getAppCompatDisplayInsets").getReturnType(),"mIsFloating");
         Class<?> winConfig = Class.forName("android.app.WindowConfiguration", false, loader);
@@ -141,6 +172,10 @@ final class FrameworkAccess {
         catch(ReflectiveOperationException ignored){}
         try{surfaceFreezer=field(wc,"mSurfaceFreezer");freezerLeash=method(surfaceFreezer.getType(),"hasLeash");}
         catch(ReflectiveOperationException ignored){surfaceFreezer=null;freezerLeash=null;}
+        try{transitionLayers=field(transitionController,"mBuildingTransitionLayers");}
+        catch(NoSuchFieldException legacy){transitionLayers=field(transitionController,"mBuildingFinishLayers");}
+        if(transitionLayers.getType()!=boolean.class||Modifier.isStatic(transitionLayers.getModifiers()))
+            throw new NoSuchFieldException("native transition layer guard");
         TaskDecoration.preflight(this);
         recentVisible=method(Class.forName("com.android.server.wm.RecentTasks",false,loader),"isVisibleRecentTask",task);
         Class<?> win=Class.forName("com.android.server.wm.WindowState",false,loader);
@@ -153,7 +188,11 @@ final class FrameworkAccess {
             overlayHidingWindows=hiding;overlayVisibilityChanged=changed;
         }catch(Exception ignored){overlayHidingWindows=null;overlayVisibilityChanged=null;}
         Class<?> insets=Class.forName("com.android.server.wm.InsetsPolicy",false,loader);
-        systemBars=method(insets,"updateSystemBars",win,int.class,int.class,boolean.class);
+        Method bars;
+        try{bars=method(insets,"updateSystemBars",win,int.class,int.class,boolean.class);}
+        catch(NoSuchMethodException legacy){bars=method(insets,"updateSystemBars",win,boolean.class,boolean.class);}
+        systemBars=bars;
+        if(bars.getReturnType()!=void.class)throw new NoSuchMethodException("native system bars");
         field(insets,"mDisplayContent");method(win,"getTask");method(dc,"getDisplayPolicy");
         method(win,"getFrame");method(field(win,"mLastReportedConfiguration").getType(),"getMergedConfiguration");
         Class<?> policy=Class.forName("com.android.server.wm.DisplayPolicy",false,loader);
@@ -196,6 +235,17 @@ final class FrameworkAccess {
         return method(owner.getClass(), name, types).invoke(owner, args);
     }
     boolean bool(Object owner, String name) throws Exception { return (Boolean) call(owner, name); }
+    Object focusedTask(Object root)throws Exception{return FrameworkVariants.focusedTask(root,focused,focusedLeaf);}
+    Object imeWindow(Object display)throws Exception{return legacyIme==null?call(display,"getImeWindow"):legacyIme.get(display);}
+    Object sizeCompatPolicy(Object controller)throws Exception{return sizeCompatGetter==null?call(controller,"getSizeCompatModePolicy"):sizeCompatGetter.invoke(controller);}
+    boolean buildingTransitionLayers(Object controller)throws Exception{return transitionLayers==null?(Boolean)field(controller,"mBuildingTransitionLayers"):transitionLayers.getBoolean(controller);}
+    boolean forceOpaque(Object target)throws Exception{return !nativeOverrideValidation&&bool(target,"isForceOpaque");}
+    boolean overrideBoundsAllowed(Object target)throws Exception{return nativeOverrideValidation||bool(target,"isOverrideBoundsAllowed");}
+    boolean overrideModeAllowed(Object target)throws Exception{return nativeOverrideValidation||bool(target,"isOverrideWindowingModeAllowed");}
+    Insets calculateInsets(Object state,Rect frame,int types,boolean ignoreVisibility)throws Exception{
+        return legacyInsets==null?(Insets)call(state,"calculateInsets",new Class<?>[]{Rect.class,Rect.class,int.class,boolean.class},frame,frame,types,ignoreVisibility)
+            :(Insets)legacyInsets.invoke(state,frame,types,ignoreVisibility);
+    }
     int integer(Object owner, String name) throws Exception { return (Integer) call(owner, name); }
     Configuration config(Object owner, boolean requested) throws Exception {
         return (Configuration) call(owner, requested ? "getRequestedOverrideConfiguration" : "getConfiguration");

@@ -1,6 +1,8 @@
 # 同源独立小窗：现状依赖与接入隔离审计
 
-## 当前实施状态：0.10.0 / code139
+## 当前实施状态：0.10.0 / code140
+
+2026-11-17 用户提供完整 fajita LineageOS 22.2 ROM 后，本轮按实际 framework/services、Trebuchet 与 Telecom 补充接口适配；详见[指定 ROM 证据与打包说明](<system-features.md>)。当前 [full scope](<../../app/src/full/resources/META-INF/xposed/scope.list>) 为 system/SystemUI/Pixel/AOSP Launcher/Telecom 共5项，[window scope](<../../app/src/window/resources/META-INF/xposed/scope.list>) 为前4项；下方早期提交的三 scope 记录按历史阶段阅读。未新增设备效果保证，原解耦剩余任务不变。
 
 **同源独立小窗版正在实施，不是可用/全部解耦/LOS 兼容公告。** 已 push：`3afdb01` 的纯 WindowPresentation + Android 执行分界；`58f39f9` 的真实 Freeform correlated STATUS gate（不自动改设置）与 single Properties owner 隔离；`bd3aafb` 的独立 [LauncherThemeReporter](<../../app/src/main/java/dev/local/sunwindowdemo/features/iconlayers/LauncherThemeReporter.java>)。owner 门控用于避免重复接管，不等于任意 OEM 原生小窗均可安全共存。
 
@@ -11,7 +13,7 @@
 - [构建配置](<../../app/build.gradle.kts>) 已有 `full` / `window` productFlavors，主包保留 `dev.nativecomplements.module`，window 为 `dev.nativecomplements.window`；同源同一 [WindowEngine](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/WindowEngine.java>)，未复制状态机。
 - C1 [WindowAdmission](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/WindowAdmission.java>) / [AndroidWindowAdmission](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/AndroidWindowAdmission.java>) 已分出接管规则与 native 读取。不把一条接管/呈现链当整个引擎解耦，新增冻结项与剩余闭环见下。
 - 多功能导航已从 main 移到 [full ModuleApp](<../../app/src/full/java/dev/local/sunwindowdemo/navigation/ModuleApp.kt>)；[Page](<../../app/src/main/java/dev/local/sunwindowdemo/navigation/Page.kt>) 仍共享，[window ModuleApp](<../../app/src/window/java/dev/local/sunwindowdemo/navigation/ModuleApp.kt>) 为新窄入口。
-- main 注册表已移到 [full java_init.list](<../../app/src/full/resources/META-INF/xposed/java_init.list>)（7 entry）；[window java_init.list](<../../app/src/window/resources/META-INF/xposed/java_init.list>) 为 4 entry：SunWindowModule、LauncherGuard、BackBridge，加 [LauncherThemeModule](<../../app/src/main/java/dev/local/sunwindowdemo/features/iconlayers/LauncherThemeModule.java>)。[scope.list](<../../app/src/main/resources/META-INF/xposed/scope.list>) 仍在 main，仍是原三系统作用域。
+- main 注册表已移到 [full java_init.list](<../../app/src/full/resources/META-INF/xposed/java_init.list>)（7 entry）；[window java_init.list](<../../app/src/window/resources/META-INF/xposed/java_init.list>) 为 4 entry：SunWindowModule、LauncherGuard、BackBridge，加 [LauncherThemeModule](<../../app/src/main/java/dev/local/sunwindowdemo/features/iconlayers/LauncherThemeModule.java>)。[scope.list](<../../app/src/full/resources/META-INF/xposed/scope.list>) 仍在 main，仍是原三系统作用域。
 - [HostExtras](<../../app/src/main/java/dev/local/sunwindowdemo/HostExtras.java>) 与 [full ProductFeatures](<../../app/src/full/java/dev/local/sunwindowdemo/ProductFeatures.java>) / [window ProductFeatures](<../../app/src/window/java/dev/local/sunwindowdemo/ProductFeatures.java>) 是真实源集隔离非小窗实现，不是隐藏 UI 或仅靠常量等 R8 猜测删除。该阶段完整 release/R8 与产物边界核验已通过，但不等于整轮最终交付或设备可用。
 - window 的 [WindowIconProvider](<../../app/src/window/java/dev/local/sunwindowdemo/features/iconlayers/WindowIconProvider.java>) 只保留 native mono / Monet 窄桥接；主题状态由独立 reporter 链提供，不带 drawer、图标库或生成入口。它不承诺与 full 的导入素材/强转生成图标能力等价。
 
@@ -48,7 +50,7 @@
 | 面 | 当前真实值／位置 | 改 applicationId 后仍有的风险 |
 |---|---|---|
 | 应用／Java身份 | [构建配置](<../../app/build.gradle.kts>)：applicationId=`dev.nativecomplements.module`，namespace=`dev.local.sunwindowdemo`。 | namespace 与安装身份不同；不必为独立包复制 Java 包，但必须查所有安装身份常量。 |
-| 模块入口与范围 | [java_init.list](<../../app/src/full/resources/META-INF/xposed/java_init.list>)含7入口，含非小窗模块；[scope.list](<../../app/src/main/resources/META-INF/xposed/scope.list>)仍为 system、SystemUI、Pixel Launcher。 | 仅保留3个宿主不是功能裁剪；也不能勾选普通应用弥补宿主接入缺口。 |
+| 模块入口与范围 | [java_init.list](<../../app/src/full/resources/META-INF/xposed/java_init.list>)含7入口，含非小窗模块；[scope.list](<../../app/src/full/resources/META-INF/xposed/scope.list>)仍为 system、SystemUI、Pixel Launcher。 | 仅保留3个宿主不是功能裁剪；也不能勾选普通应用弥补宿主接入缺口。 |
 | Wire | [Wire](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/Wire.java>)硬编码 PKG、COMMAND、RESULT、CONTROL、frames.v16；[BackBridge](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/BackBridge.java>)派生 backLong.v1；[BackVisual](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/BackVisual.java>)派生 BACK_VISUAL 与 Binder描述符。 | 新 APK 仍会呼叫原版动作／检查原版 UID；同协议号不代表正确对端。独立命名空间与版本协商须明确，不是任意把协议16改大。 |
 | Launcher消息 | [LauncherGuard](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/LauncherGuard.java>)把 GUARD_STATE／QUERY_GUARD_STATE直接写死；[WindowEngine](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/WindowEngine.java>)派生 HISTORY。 | 两个后端都可能改同一个 Launcher 输入／recents 状态；需要拥有者，不只 action 改名。 |
 | Manifest | [Manifest](<../../app/src/main/AndroidManifest.xml>)只有 diagnostics authority 使用 `${applicationId}`；settings、iconlayers等多项 authority、CONTROL权限、diagnostic/shortcut taskAffinity仍写死。 | authority 冲突可阻止并装；签名权限定义、任务归属、shortcuts、诊断识别也必须一致迁移；不能把所有Provider保留给独立版。 |

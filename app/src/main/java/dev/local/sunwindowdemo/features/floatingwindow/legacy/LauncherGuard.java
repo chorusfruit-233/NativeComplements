@@ -18,24 +18,35 @@ public final class LauncherGuard extends XposedModule {
     static final String QUERY=Wire.PKG+".QUERY_GUARD_STATE";
     private final GestureGate gate=new GestureGate();
     private boolean eligible,attempted;
+    private String launcherPackage;
     private Context context;
     private BroadcastReceiver receiver,historyReceiver;
     private int claims;
     private RecentsFilter recents;
     private IBinder visualLease;
-    @Override public void onModuleLoaded(ModuleLoadedParam p){eligible=!p.isSystemServer()&&(PACKAGE.equals(p.getProcessName())||p.getProcessName().startsWith(PACKAGE+":"));}
+    @Override public void onModuleLoaded(ModuleLoadedParam p){launcherPackage=dev.local.sunwindowdemo.core.LauncherHosts.packageForProcess(p.getProcessName());eligible=!p.isSystemServer()&&launcherPackage!=null;}
     @Override public synchronized void onPackageLoaded(PackageLoadedParam p){
-        if(!eligible||attempted||!PACKAGE.equals(p.getPackageName()))return;attempted=true;
+        if(!eligible||attempted||!launcherPackage.equals(p.getPackageName()))return;attempted=true;
         ProductFeatures.installLauncher(this,p.getDefaultClassLoader(),this::note);
         List<XposedInterface.HookHandle> handles=new ArrayList<>();
         try{
             ClassLoader loader=p.getDefaultClassLoader();
-            Class<?> handler=Class.forName("com.android.quickstep.TouchInteractionHandler",false,loader);
             Class<?> service=Class.forName("com.android.quickstep.TouchInteractionService",false,loader);
+            Class<?> handler;
+            try{handler=Class.forName("com.android.quickstep.TouchInteractionHandler",false,loader);}
+            catch(ClassNotFoundException legacy){handler=service;}
             Method event=handler.getDeclaredMethod("onInputEvent",InputEvent.class);
             Method displayId=InputEvent.class.getDeclaredMethod("getDisplayId");displayId.setAccessible(true);
             Method create=service.getDeclaredMethod("onCreate"),destroy=service.getDeclaredMethod("onDestroy");
             if(event.getReturnType()!=void.class||create.getReturnType()!=void.class||destroy.getReturnType()!=void.class)throw new NoSuchMethodException("signature");
+            // API35's native listener calls the private service method through an R8 bridge.
+            if(handler==service){
+                Method bridge=service.getDeclaredMethod("$r8$lambda$JDK2db7a_ZtzI6D1EJ5hYukunXo",service,InputEvent.class);
+                if(bridge.getReturnType()!=void.class||!java.lang.reflect.Modifier.isStatic(bridge.getModifiers())
+                        ||!deoptimize(bridge))throw new IllegalStateException("launcher input bridge deoptimize");
+                Class<?> callback=Class.forName("com.android.quickstep.TouchInteractionService$$ExternalSyntheticLambda2",false,loader);
+                if(!deoptimize(callback.getDeclaredMethod("onInputEvent",InputEvent.class)))throw new IllegalStateException("launcher input listener deoptimize");
+            }
             handles.add(hook(create).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{
                 Object result=chain.proceed();
                 try{connect((Context)chain.getThisObject());}catch(Throwable failure){gate.disable();note("GUARD_STATE_FAILED "+failure.getClass().getSimpleName());}

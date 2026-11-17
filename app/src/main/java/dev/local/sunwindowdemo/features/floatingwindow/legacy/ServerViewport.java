@@ -127,24 +127,15 @@ final class ServerViewport {
         Field resultConfig=a.field(resultType,"mergedConfiguration"),resultInsets=a.field(resultType,"insetsState");
         int installed=0,added=0;
         for(Method method:wms.getDeclaredMethods())if(method.getName().equals("relayoutWindow")||method.getName().equals("addWindow")){
-            boolean initial=method.getName().equals("addWindow");
-            Class<?>[] types=method.getParameterTypes();int client=-1,result=-1;
-            if(initial&&(method.getReturnType()!=int.class||types.length!=9
-                ||!types[0].getName().equals("com.android.server.wm.Session")
-                ||!types[1].getName().equals("android.view.IWindow")||types[2]!=android.view.WindowManager.LayoutParams.class
-                ||types[3]!=int.class||types[4]!=int.class||types[5]!=int.class||types[6]!=int.class
-                ||!types[7].getName().equals("android.view.InputChannel")||types[8]!=resultType))continue;
-            for(int i=0;i<types.length;i++){
-                if(types[i].getName().equals("android.view.IWindow"))client=i;
-                if(types[i]==resultType)result=i;
-            }
-            if(client<0||result<0)continue;
-            final int clientIndex=client,resultIndex=result;method.setAccessible(true);
+            ViewportTargets.Output output=ViewportTargets.describe(method);
+            if(output==null)continue;
+            boolean initial=output.initial();
+            final int clientIndex=1,resultIndex=output.result();method.setAccessible(true);
             handles.add(module.hook(method).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{
                 Object value=chain.proceed();
                 if(value instanceof Integer&&(Integer)value<0)return value;
-                Object resultObject=chain.getArg(resultIndex);
-                Object owner=resultObject==null?null:engine.clientOwner(chain.getArg(clientIndex));
+                Object resultObject=resultIndex<0?null:chain.getArg(resultIndex);
+                Object owner=resultIndex>=0&&resultObject==null?null:engine.clientOwner(chain.getArg(clientIndex));
                 if(owner!=null){
                     // addWindow fills Insets before the client's first layout, but not mergedConfiguration.
                     // Never map its empty configuration into a fabricated fullscreen report.
@@ -152,7 +143,8 @@ final class ServerViewport {
                         Object outgoing=resultConfig.get(resultObject);
                         a.call(outgoing,"setTo",new Class<?>[]{policy.merged},policy.merged(outgoing,engine.clientMode(owner)));
                     }
-                    mapInsets(a,resultInsets.get(resultObject),insets->engine.ownerInsets(owner,insets));
+                    Object outgoing=output.insets()<0?resultInsets.get(resultObject):chain.getArg(output.insets());
+                    mapInsets(a,outgoing,insets->engine.ownerInsets(owner,insets));
                 }
                 return value;
             }));if(initial)added++;else installed++;

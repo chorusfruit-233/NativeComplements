@@ -15,7 +15,7 @@ public final class WindowIconProvider extends ContentProvider {
         boolean owner=uid==getContext().getApplicationInfo().uid;
         String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
         boolean sameUser=UserHandle.getUserHandleForUid(uid).equals(android.os.Process.myUserHandle());
-        boolean launcher=sameUser&&packages!=null&&Arrays.asList(packages).contains(IconLayerStore.LAUNCHER);
+        boolean launcher=sameUser&&dev.local.sunwindowdemo.core.LauncherHosts.ownsUid(getContext(),uid);
         boolean systemUi=sameUser&&packages!=null&&Arrays.asList(packages).contains(IconLayerStore.SYSTEM_UI);
         if(!owner&&!launcher&&!systemUi&&uid!=android.os.Process.SYSTEM_UID)throw new SecurityException("window icon bridge");
         return launcher;

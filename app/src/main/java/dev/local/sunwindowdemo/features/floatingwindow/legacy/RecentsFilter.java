@@ -19,10 +19,18 @@ final class RecentsFilter {
     RecentsFilter(ClassLoader cl,Consumer<String> logger) throws Exception {
         log=logger;Class<?> rv=Class.forName("com.android.quickstep.views.RecentsView",false,cl);
         Class<?> group=Class.forName("com.android.quickstep.util.GroupTask",false,cl);
-        plan=rv.getDeclaredMethod("applyLoadPlan",List.class,int.class);plan.setAccessible(true);
+        Method load;
+        try{load=rv.getDeclaredMethod("applyLoadPlan",List.class,int.class);}
+        catch(NoSuchMethodException legacy){load=rv.getDeclaredMethod("applyLoadPlan",List.class);}
+        plan=load;plan.setAccessible(true);
         contains=group.getDeclaredMethod("containsTask",int.class);tasks=group.getDeclaredMethod("getTasks");
         reload=rv.getDeclaredMethod("reloadIfNeeded");reload.setAccessible(true);
-        applied=rv.getDeclaredField("mAppliedTaskListChangeId");applied.setAccessible(true);
+        Field change;
+        try{change=rv.getDeclaredField("mAppliedTaskListChangeId");}
+        catch(NoSuchFieldException legacy){change=rv.getDeclaredField("mTaskListChangeId");}
+        applied=change;applied.setAccessible(true);
+        if(plan.getReturnType()!=void.class||applied.getType()!=int.class||contains.getReturnType()!=boolean.class
+            ||!List.class.isAssignableFrom(tasks.getReturnType()))throw new NoSuchMethodException("native recents plan");
     }
     void install(XposedModule module){
         List<XposedInterface.HookHandle> hooks=new ArrayList<>();
@@ -37,7 +45,7 @@ final class RecentsFilter {
                     if(((List<?>)tasks.invoke(group)).size()==1)for(int id:hidden)if((Boolean)contains.invoke(group,id)){own=true;break;}
                     if(!own)filtered.add(group);
                 }
-                return chain.proceed(new Object[]{filtered,chain.getArg(1)});
+                Object[] args=chain.getArgs().toArray();args[0]=filtered;return chain.proceed(args);
             }));
             // Keep the native running-task stub: it anchors recents/home animation identity.
             log.accept("RECENTS_READY hooks=1");

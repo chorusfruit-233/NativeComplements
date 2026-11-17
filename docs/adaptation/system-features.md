@@ -1,6 +1,8 @@
 # 系统功能接入与适配边界（非小窗主体）
 
-## 当前实施状态：0.10.0 / code139
+## 当前实施状态：0.10.0 / code140
+
+2026-11-17 用户提供完整 fajita ROM 后，适配范围已扩展到该构建的 framework/services、Trebuchet 和 Telecom；下方 11-15 的“只有 SystemUI”结论保留为历史检查点。指定 ROM 的接口证据不替代设备回归，也不表示全部 LOS 构建或小窗解耦已完成。
 
 已 push：`3afdb01` 呈现规则/Android 执行分界；`58f39f9` 真实 Freeform correlated STATUS gate + single Properties owner 隔离；`bd3aafb` 独立 [LauncherThemeReporter](<../../app/src/main/java/dev/local/sunwindowdemo/features/iconlayers/LauncherThemeReporter.java>)，主题上报不再依附抽屉莫奈。其他功能重构与 Alive 仍暂缓。
 
@@ -10,7 +12,30 @@
 
 `004aa43` 已 commit 并 push C2 WindowControl、C3a LongBackGesture、OpenWaitState，完整双单测 full 368 / window 363 零失败，基线/主机及归档接口检查通过。仍剩导航 native ticket / pure WindowNavigation 与 Policy Object 改 facts、recovery boot/retry、tick lease/screen schedule、Host 不同入口 admission、BackBridge C3b handoff generation/idle/timeout 五闭环；复用已有纯规则，native AtomicFile/Parcel/WM/Binder 留适配侧不算业务未解耦。不称全部解耦、独立版可用或 LOS 兼容。未来我们完成 refactor 后，LOS 贡献者再 fork / adapt / test PR，经我们 review + 现设备回归后决定 merge。详见 [当前总览](<README.md>)。
 
-## 2026-11-15 草稿 SystemUI / API35 适配
+## 2026-11-17 fajita LineageOS 22.2 / API35
+
+输入为用户提供的 [20261110 signed ROM](https://mirrorbits.lineageos.org/full/fajita/20261110/lineage-22.2-20261110-nightly-fajita-signed.zip)。已下载并对照 [LineageOS 构建 API](https://download.lineageos.org/api/v2/devices/fajita/builds) 验证 ZIP SHA256：`2e87b2bcfc858f0b4290bd7e08803e13be56724ac807e13683a3f540b5e3c7bb`；提取 payload 的 system 镜像及实际组件，不把别的 Android15 构建作为替代。build.prop 为 `22.2-20261110-NIGHTLY-fajita`、SDK35、安全补丁 2026-10-01；其 OnePlus Android11 vendor fingerprint 不用于判断当前系统 API。
+
+[固定目标清单](<../../tests/target/lineage-fajita-20261110.json>) 记录 6 个组件的 SHA256：framework.jar、services.jar、framework-res.apk、SystemUI.apk、TrebuchetQuickStep.apk、Telecom.apk。[专用检查器](<../../tests/verify_lineage_fajita_target.py>) 重读真实 DEX 的精确成员、声明类型/修饰符、继承链及关键方法指令/调用/字段流，并用 AAPT2 核验实际清单身份：
+
+```sh
+python tests/verify_lineage_fajita_target.py --root /path/to/extracted/files --aapt2 /path/to/aapt2
+```
+
+- 小窗服务端：[FrameworkAccess](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/FrameworkAccess.java>) 补 root→topmost leaf 焦点、原生 `Transition.assignLayers` / `mBuildingFinishLayers`、`DisplayChange` 转场参数、3 参数 Insets、IME 字段及旧 size-compat getter。API35 原生没有新版的 override/force-opaque 三策略，只有三者全部缺失时选择旧路径，仍检查原生 Freeform、TaskDisplayArea 与受限 resize，不全局解锁能力。
+- [ViewportTargets](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/ViewportTargets.java>) 精确核验 12 参数 addWindow 与 10 参数 relayout，仅映射 owned 窗口的 Binder 输出。ActivityStarter 使用原生 6 参数 handleStartResult / 13 参数 unchecked 启动；InsetsPolicy 只清除 owned freeform 对应的最后一个布尔值，保留 split-screen。隐藏小窗可见性使用原生旧 caller 链逐个 deopt 后才就绪。
+- 桌面实际为 `com.android.launcher3`，不是由 APK 文件名猜 `org.lineageos.trebuchet`。[LauncherHosts](<../../app/src/main/java/dev/local/sunwindowdemo/core/LauncherHosts.java>) 统一两种已知桌面身份、同用户真实 UID 与显式广播；[LauncherGuard](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/LauncherGuard.java>) 对旧 TouchInteractionService 私有输入方法的真实 R8 bridge / listener deopt，保留外层 finishInputEvent。最近任务兼容 `applyLoadPlan(List)` / `mTaskListChangeId`，Taskbar 仍走原生三参数 provider 与重建/恢复路径。
+- 图标：旧 Launcher 主题通过原生 `Themes.isThemedIconEnabled` 与 `LauncherPrefs.getPrefs` 只读观察；抽屉按实际绑定 View 限定原生主题谓词，不写全局主题或共享 BitmapInfo。补旧缓存 getter/参数顺序与 4 参数 FloatingIconView 原生动画入口，保留新版路径。
+- Telecom 清单是 `com.android.server.telecom`、sharedUserId `android.uid.system`、application process `system`；增加包加载时机，早期开机缺类不锁死后续安装。[CallFilteringCopy](<../../app/src/main/java/dev/local/sunwindowdemo/features/callblocking/CallFilteringCopy.java>) 在缺少新版 Builder.from 时完整复制旧版 13 项过滤事实（含联系人、DND 与 screening response 身份），保留原生拒绝、紧急状态与用户门控；未知原生事实拒装该功能。
+- scope 分 flavor：[full](<../../app/src/full/resources/META-INF/xposed/scope.list>) 为 system/SystemUI/Pixel/AOSP Launcher/Telecom 共5项，[window](<../../app/src/window/resources/META-INF/xposed/scope.list>) 为前4项。7/4 入口保持，独立版不带 Telecom、导航沉浸、抽屉或其他非小窗 Hook。
+
+最终源码的双完整单测 full **401** / window **396**，零失败、零跳过；不可变 Demo8.2 基线/主机规则、旧 current/QPR2 test4 库存和文档链接检查 PASS。ROM 检查重读 **430 项精确成员、36 个原生方法指令/调用/字段流**及6组件 hash、桌面/Telecom 清单身份；SystemUI 与草稿 `_15.apk` 完全相同，其原有97项成员及原生调用检查继续 PASS。这些证据不证明设备 ART Hook、手势/键盘/横屏、真实来电、关闭及重启恢复效果。
+
+本轮按用户已有 debug 签名授权，使用独立 `.local/debug.keystore`，不替换原 `.local/demo.keystore`。可重复打包入口为 `python tests/package_release.py --debug-signing`，默认无此参数时仍要求原发行证书。复用上次 Android Debug 证书（SHA256 `36f000d3a84cfc3de27d4101d81f79456dd696a68e0df24a6d809bb2011e18bc`），versionName `0.10.0` / code140 可覆盖上次 code139 debug 包，不能覆盖原发行签名包；签名私钥与 ROM/反编译产物均不提交。
+
+双 release/R8 与最终 debug 签名打包检查 PASS：v2/v3 签名、16KiB 对齐、APK CRC、包身份、5/4静态 scope、7/4入口、快捷方式、最终反射名称（含旧桌面异步图标 R8 bridge）及 window 禁止非小窗 Hook 的 DEX 边界均通过。交付为 `deliverables/NativeComplements-0.10.0-140-debug-signed.apk` 与 `NativeComplements-Window-0.10.0-140-debug-signed.apk`；这里的 debug 指独立测试证书，构建仍使用 release/R8。没有安装、重启或修改设备 LSPosed/系统设置。
+
+## 2026-11-15 草稿 SystemUI / API35 适配（历史检查点）
 
 本轮目标是 `chorusfruit-233/NativeComplements` 草稿 release 的 `_15.apk`（asset `751573293`），不是先前 current/QPR2 归档。实际清单为 `com.android.systemui`、versionName `15`、versionCode / minSdk / targetSdk `35`；SHA256：`9b922ad353ddab0c2a286804e4960f7d17fc9d82c8767434553645fdb9619f0c`。功能版本沿用实施中的 `0.10.0 / code139`。
 
@@ -45,7 +70,7 @@
 
 ## 2. 安装入口总图与共享状态
 
-正式入口由 [java_init.list](<../../app/src/full/resources/META-INF/xposed/java_init.list>) 列出的七个类构成。作用域由 [scope.list](<../../app/src/main/resources/META-INF/xposed/scope.list>) 与 [module.prop](<../../app/src/main/resources/META-INF/xposed/module.prop>) 固定为 `system`、`com.android.systemui`、`com.google.android.apps.nexuslauncher`，API101、`staticScope=true`。静态范围是否限制选择或清理旧授权是框架实现，不由本模块直接写 LSPosed 数据库。
+正式入口由 [java_init.list](<../../app/src/full/resources/META-INF/xposed/java_init.list>) 列出的七个类构成。作用域由 [scope.list](<../../app/src/full/resources/META-INF/xposed/scope.list>) 与 [module.prop](<../../app/src/main/resources/META-INF/xposed/module.prop>) 固定为 `system`、`com.android.systemui`、`com.google.android.apps.nexuslauncher`，API101、`staticScope=true`。静态范围是否限制选择或清理旧授权是框架实现，不由本模块直接写 LSPosed 数据库。
 
 | 入口 | 精确进程/生命周期门控 | 本页负责的委托 |
 |---|---|---|

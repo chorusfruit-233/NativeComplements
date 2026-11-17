@@ -76,6 +76,15 @@ public class AndroidWindowAdmissionTest {
         try{synchronized(LOCK){adapter.validate(task,true);}fail("expected rejection");}
         catch(IllegalStateException error){assertEquals(message,error.getMessage());}
     }
+    @Test public void legacyOverridePolicyStillRequiresNativeFreeformAndAreaAdmission()throws Exception{
+        ThreadLocal<Object> candidate=new ThreadLocal<>();Task task=new Task(candidate);FrameworkAccess a=access();
+        set(a,"nativeOverrideValidation",true);
+        Atm atm=new Atm();AndroidWindowAdmission adapter=new AndroidWindowAdmission(a,atm,candidate);
+        atm.mSupportsFreeformWindowManagement=false;rejected(adapter,task,WindowAdmission.Rejection.CAPABILITY.message);
+        atm.mSupportsFreeformWindowManagement=true;task.freeform=false;
+        rejected(adapter,task,WindowAdmission.Rejection.RESIZE.message);assertNull(candidate.get());
+        task.freeform=true;task.areaValid=false;rejected(adapter,task,WindowAdmission.Rejection.RESIZE.message);
+    }
     @Test public void earlyRejectionNeverQueriesDisplayResizeOrLaterNativeApis()throws Exception{
         ThreadLocal<Object> candidate=new ThreadLocal<>();Atm atm=new Atm();Task task=new Task(candidate);
         AndroidWindowAdmission adapter=new AndroidWindowAdmission(access(),atm,candidate);

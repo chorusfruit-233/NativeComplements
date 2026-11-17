@@ -1,6 +1,8 @@
 # 小窗：Hook、系统适配边界与决策／执行现状
 
-## 当前实施状态：0.10.0 / code139
+## 当前实施状态：0.10.0 / code140
+
+2026-11-17 用户提供完整 fajita LineageOS 22.2 ROM 后，本轮按实际 framework/services、Trebuchet 与 Telecom 补充接口适配；详见[指定 ROM 证据与打包说明](<system-features.md>)。当前 [full scope](<../../app/src/full/resources/META-INF/xposed/scope.list>) 为 system/SystemUI/Pixel/AOSP Launcher/Telecom 共5项，[window scope](<../../app/src/window/resources/META-INF/xposed/scope.list>) 为前4项；下方早期提交的三 scope 记录按历史阶段阅读。未新增设备效果保证，原解耦剩余任务不变。
 
 `3afdb01` 已 push 纯 [WindowPresentation](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/WindowPresentation.java>) 与 [AndroidWindowPresentation](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/AndroidWindowPresentation.java>) 原生执行边界；`58f39f9` 已 push 真实 Freeform correlated STATUS gate（不改设置）和 single Properties owner 隔离；`bd3aafb` 已 push 独立 LauncherThemeReporter。C1 [WindowAdmission](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/WindowAdmission.java>) / [AndroidWindowAdmission](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/AndroidWindowAdmission.java>) 与 full/window flavor 已在 `a6da12a` commit 并 push main（receipt：`bd3aafb..a6da12a`），两产品仍共用同一 Engine。window [注册表](<../../app/src/window/resources/META-INF/xposed/java_init.list>) 为 3 个小窗入口 + LauncherThemeModule，main 三系统 scope 保留；该提交已通过 HostExtras / 产品源集隔离非小窗实现。
 
@@ -217,7 +219,7 @@
 6. **静态与真机结论分开**：归档脚本、host/Robolectric、构建、设备采样各记结果与构建身份。可选能力缺失要描述真实降级，核心能力／身份不明则不接管，不能借测试通过声称其他 ROM／版本全面兼容。
 
 [java_init.list]: <../../app/src/full/resources/META-INF/xposed/java_init.list>
-[scope.list]: <../../app/src/main/resources/META-INF/xposed/scope.list>
+[scope.list]: <../../app/src/full/resources/META-INF/xposed/scope.list>
 [SunWindowModule]: <../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/SunWindowModule.java>
 [FrameworkAccess]: <../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/FrameworkAccess.java>
 [WindowEngine]: <../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/WindowEngine.java>

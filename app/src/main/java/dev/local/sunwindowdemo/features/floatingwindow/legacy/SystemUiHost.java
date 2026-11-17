@@ -52,7 +52,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
         }}catch(Exception ignored){}
     }};
     private final BroadcastReceiver queryReceiver=new BroadcastReceiver(){public void onReceive(Context c,Intent i){
-        try{int uid=getSentFromUid();if(uid==getPackageManager().getApplicationInfo(LauncherGuard.PACKAGE,0).uid||uid==getApplicationInfo().uid)publish(true);}catch(Exception ignored){}
+        try{int uid=getSentFromUid();if(dev.local.sunwindowdemo.core.LauncherHosts.ownsUid(c,uid)||uid==getApplicationInfo().uid)publish(true);}catch(Exception ignored){}
     }};
     private int settingsFailures;
     private void loadSettings(){settingsWorker.execute(()->{
@@ -161,7 +161,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
             }
             int taskId=data.readInt();String pkg=data.readString();
             String backToken=code==android.os.IBinder.FIRST_CALL_TRANSACTION?data.readString():null;data.enforceNoDataAvail();
-            if(taskId<0||!Wire.allowedPackage(pkg)||Wire.PKG.equals(pkg)||LauncherGuard.PACKAGE.equals(pkg))return false;
+            if(taskId<0||!Wire.allowedPackage(pkg)||Wire.PKG.equals(pkg)||dev.local.sunwindowdemo.core.LauncherHosts.isLauncher(pkg))return false;
             boolean probe=code==android.os.IBinder.FIRST_CALL_TRANSACTION+2;
             if(!probe&&!Wire.validToken(backToken))return false;
             boolean accepted=!cleaned&&allowed()&&config.longBackWindow()&&backendReady&&dropAvailable()
@@ -417,7 +417,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
             .putExtra("width",bounds.width()).putExtra("height",bounds.height()).putExtra("rects",rects);
         state.putExtra("handleRects",handles).putExtra("immersive",immersive).putExtra("hiddenTask",hidden).putExtra("dropEnabled",dropEnabled).putExtra("density",getResources().getDisplayMetrics().density);
         android.os.Bundle extras=new android.os.Bundle();extras.putBinder("lease",lease);extras.putBinder("dropChannel",dropChannel);state.putExtras(extras);
-        sendBroadcast(state,null,android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle());
+        dev.local.sunwindowdemo.core.LauncherHosts.broadcast(this,state,true);
         sendBroadcast(new Intent(state).setPackage(BackBridge.PACKAGE),null,android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle());
     }
     private List<ShortcutTarget> selectedTargets(){
@@ -578,7 +578,7 @@ public final class SystemUiHost extends ContextWrapper implements ComponentCallb
             var task=tasks.get(0);String pkg=task.topActivity.getPackageName();
             if(Wire.PKG.equals(pkg)&&attempt<20){main.postDelayed(()->floatCurrent(attempt+1,quiet),32);return;}
             if(android.app.ActivityManager.RunningTaskInfo.class.getField("displayId").getInt(task)!=0||Wire.PKG.equals(pkg)
-                ||"com.android.systemui".equals(pkg)||BackBridge.PACKAGE.equals(pkg)||LauncherGuard.PACKAGE.equals(pkg)||!Wire.allowedPackage(pkg)){
+                ||"com.android.systemui".equals(pkg)||BackBridge.PACKAGE.equals(pkg)||dev.local.sunwindowdemo.core.LauncherHosts.isLauncher(pkg)||!Wire.allowedPackage(pkg)){
                 if(!quiet)Toast.makeText(this,"请先打开要转换的小窗应用",Toast.LENGTH_SHORT).show();return;
             }
             if(activeTask>0&&task.taskId==activeTask){if(!quiet)Toast.makeText(this,"当前应用已经是小窗",Toast.LENGTH_SHORT).show();return;}

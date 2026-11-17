@@ -320,7 +320,7 @@ public final class BackBridge extends XposedModule {
         ActivityManager.RunningTaskInfo task=context.getSystemService(ActivityManager.class).getRunningTasks(1).stream().findFirst().orElse(null);
         if(task==null||task.topActivity==null)return false;
         String pkg=task.topActivity.getPackageName();
-        if(!Wire.allowedPackage(pkg)||pkg.equals(Wire.PKG)||pkg.equals(PACKAGE)||pkg.equals(LauncherGuard.PACKAGE))return false;
+        if(!Wire.allowedPackage(pkg)||pkg.equals(Wire.PKG)||pkg.equals(PACKAGE)||dev.local.sunwindowdemo.core.LauncherHosts.isLauncher(pkg))return false;
         s.task=task.taskId;s.pkg=pkg;
         // Synchronous admission prevents swallowing Back when the module rejects the request.
         Object callback=callbackField.get(owner);

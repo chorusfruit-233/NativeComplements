@@ -22,6 +22,10 @@ public class LauncherThemeReporterTest {
         public Manager manager=new Manager();
         public Object get(Context context){return manager;}
     }
+    public static class NativePreferences {
+        public static SharedPreferences prefs(Context context){return context.getSharedPreferences("native-theme-test",0);}
+        public static boolean themed(Context context){return prefs(context).getBoolean("themed_icons",false);}
+    }
     public static class Reports extends ContentProvider {
         final List<Bundle> reports=new ArrayList<>();boolean reject;
         @Override public boolean onCreate(){return true;}
@@ -75,6 +79,18 @@ public class LauncherThemeReporterTest {
         Manager manager=new Manager();manager.iconState.themeController=new Object();
         call("refresh",new Class<?>[]{Object.class},manager);assertTrue(changes.isEmpty());
         Shadows.shadowOf(Looper.getMainLooper()).idle();assertEquals(List.of(true),changes);
+    }
+    @Test public void nativePreferencesObserveThemeChangesAndCloseUnregistersWithoutWritingSettings()throws Exception{
+        Context app=RuntimeEnvironment.getApplication();
+        set(reporter,"nativeThemed",NativePreferences.class.getMethod("themed",Context.class));
+        set(reporter,"nativePreferences",NativePreferences.class.getMethod("prefs",Context.class));
+        reporter.connect(app);Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertEquals(List.of(false),changes);
+        NativePreferences.prefs(app).edit().putBoolean("themed_icons",true).commit();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();assertEquals(List.of(false,true),changes);
+        assertTrue(NativePreferences.prefs(app).getBoolean("themed_icons",false));
+        reporter.close();NativePreferences.prefs(app).edit().putBoolean("themed_icons",false).commit();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();assertEquals(List.of(false,true),changes);
     }
     @Test public void initialConnectIsIdempotentAndCloseCancelsQueuedCallback()throws Exception{
         Context app=RuntimeEnvironment.getApplication();

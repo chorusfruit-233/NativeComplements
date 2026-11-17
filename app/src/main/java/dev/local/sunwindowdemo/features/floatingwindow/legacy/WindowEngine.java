@@ -61,7 +61,7 @@ final class WindowEngine {
     NativeForeground nativeForeground()throws Exception{
         if(lock==null||root==null)return null;
         synchronized(lock){
-            Object task=a.focused.invoke(root);if(task==null)return null;
+            Object task=a.focusedTask(root);if(task==null)return null;
             Object top=a.call(task,"topRunningActivity");if(top==null)return null;
             int mode=a.integer(task,"getWindowingMode");boolean owned=owns(task);
             Object display=a.call(task,"getDisplayContent");
@@ -146,7 +146,7 @@ final class WindowEngine {
             if(!uiReady||uiLease==null||!uiLease.isBinderAlive()||SystemClock.elapsedRealtime()-uiSeen>3000
                 ||normalOccupied()||pendingStart!=null
                 ||screenBlocked())return false;
-            Object task=find(id);if(task==null||task!=a.focused.invoke(root)||sessionFor(task)!=null||a.integer(task,"getWindowingMode")!=1)return false;
+            Object task=find(id);if(task==null||task!=a.focusedTask(root)||sessionFor(task)!=null||a.integer(task,"getWindowingMode")!=1)return false;
             ComponentName component=(ComponentName)a.field(task,"realActivity");
             if(component==null||!pkg.equals(component.getPackageName()))return false;
             cancelBackPreparation(null);
@@ -367,7 +367,7 @@ final class WindowEngine {
                 }
             }, new IntentFilter(Wire.COMMAND), null, handler, Context.RECEIVER_EXPORTED);
             context.registerReceiver(new BroadcastReceiver(){public void onReceive(Context c,Intent i){
-                try{if(getSentFromUid()==context.getPackageManager().getApplicationInfo(LauncherGuard.PACKAGE,0).uid)pushHistory();}
+                try{if(dev.local.sunwindowdemo.core.LauncherHosts.ownsUid(context,getSentFromUid()))pushHistory();}
                 catch(Exception ignored){}
             }},new IntentFilter(HISTORY_QUERY),null,handler,Context.RECEIVER_EXPORTED);
             try{continuation=new WindowContinuation(context,log);}catch(Exception e){log.accept("EDGE_CONTINUATION_UNAVAILABLE "+FrameworkAccess.reason(e));}
@@ -467,7 +467,7 @@ final class WindowEngine {
             rememberOrientation(previous);
             Session s;
             synchronized (lock) {
-                Session retained=sessionFor(i.getIntExtra("taskId",-1)<0?a.focused.invoke(root):find(i.getIntExtra("taskId",-1)));
+                Session retained=sessionFor(i.getIntExtra("taskId",-1)<0?a.focusedTask(root):find(i.getIntExtra("taskId",-1)));
                 if(retained!=null){
                     if(!presentExisting(retained,false)){if(waitStart(i))return;throw new EntryNotReady();}
                     completeOpen(i,true);return;
@@ -605,7 +605,7 @@ final class WindowEngine {
             });}
             int id=candidate[0]==null?-1:(Integer)a.field(candidate[0],"mTaskId");
             if(!request.getBooleanExtra("launched",false)&&candidate[0]!=null)synchronized(lock){
-                if(WindowPolicy.morphEntry(shortcut,candidate[0]==a.focused.invoke(root),
+                if(WindowPolicy.morphEntry(shortcut,candidate[0]==a.focusedTask(root),
                     a.bool(candidate[0],"isVisibleRequested"),a.integer(candidate[0],"getWindowingMode"))){
                     // Already on screen: convert the current page without sending MAIN again.
                     request.putExtra("morphEntry",true).putExtra("launched",true);
@@ -622,7 +622,7 @@ final class WindowEngine {
                     if(!launchRoutingReady)throw new IllegalStateException("原始跳转任务识别尚未就绪");
                     String foregroundPackage=null;
                     if(request.getBooleanExtra("notificationLaunch",false))synchronized(lock){
-                        Object focused=a.focused.invoke(root),top=focused==null?null:a.call(focused,"topRunningActivity");
+                        Object focused=a.focusedTask(root),top=focused==null?null:a.call(focused,"topRunningActivity");
                         if(top!=null)foregroundPackage=(String)a.field(top,"packageName");
                     }
                     WindowNavigation.Launch ticket=new WindowNavigation.Launch(generation,pkg,
@@ -738,7 +738,7 @@ final class WindowEngine {
             ComponentName component=(ComponentName)a.field(task,"realActivity");
             if(component==null||!ticket.targetAllowed(component.getPackageName(),(Integer)a.field(task,"mUserId"))
                 ||Wire.PKG.equals(component.getPackageName())||BackBridge.PACKAGE.equals(component.getPackageName())
-                ||LauncherGuard.PACKAGE.equals(component.getPackageName())||a.integer(task,"getActivityType")!=1)return;
+                ||dev.local.sunwindowdemo.core.LauncherHosts.isLauncher(component.getPackageName())||a.integer(task,"getActivityType")!=1)return;
             synchronized(ticket){
                 if(pendingShortcutLaunch.get()!=ticket||ticket.generation!=openGeneration)return;
                 ticket.task=task;ticket.taskId=(Integer)a.field(task,"mTaskId");ticket.targetPackage=component.getPackageName();
@@ -776,7 +776,7 @@ final class WindowEngine {
     /** Resolve source-less app-context starts only for the real foreground caller. */
     private Object launchSource(Object request,Object source,int realCallingUid)throws Exception{
         if(source!=null)return source;
-        Object focused=a.focused.invoke(root),caller=focused==null?null:a.call(focused,"topRunningActivity");
+        Object focused=a.focusedTask(root),caller=focused==null?null:a.call(focused,"topRunningActivity");
         return caller!=null&&WindowPolicy.sameWindowCaller((Integer)a.field(request,"launchedFromUid"),realCallingUid,
             a.integer(caller,"getUid"),(String)a.field(request,"launchedFromPackage"),(String)a.field(caller,"packageName"))?caller:null;
     }
@@ -801,14 +801,14 @@ final class WindowEngine {
             if((Boolean)a.call(request,"isResolverOrDelegateActivity")||a.integer(request,"getUid")<10000)return null;
             String pkg=(String)a.field(request,"packageName");
             if(!Wire.allowedPackage(pkg)||Wire.PKG.equals(pkg)||BackBridge.PACKAGE.equals(pkg)
-                ||LauncherGuard.PACKAGE.equals(pkg)||!UserHandle.getUserHandleForUid(a.integer(request,"getUid")).equals(android.os.Process.myUserHandle()))return null;
+                ||dev.local.sunwindowdemo.core.LauncherHosts.isLauncher(pkg)||!UserHandle.getUserHandleForUid(a.integer(request,"getUid")).equals(android.os.Process.myUserHandle()))return null;
             Intent intent=(Intent)a.field(request,"intent");boolean chooser=(Boolean)a.call(source,"isResolverOrDelegateActivity");
             String sourcePkg=(String)a.field(source,"packageName");
-            if(!chooser&&(a.integer(source,"getUid")<10000||Wire.PKG.equals(sourcePkg)||BackBridge.PACKAGE.equals(sourcePkg)||LauncherGuard.PACKAGE.equals(sourcePkg)))return null;
+            if(!chooser&&(a.integer(source,"getUid")<10000||Wire.PKG.equals(sourcePkg)||BackBridge.PACKAGE.equals(sourcePkg)||dev.local.sunwindowdemo.core.LauncherHosts.isLauncher(sourcePkg)))return null;
             if(pkg.equals(a.call(context.getPackageManager(),"getPermissionControllerPackageName")))return null;
             if(!ShareWindow.eligibleIntent(intent,chooser)||(intent.getFlags()&Intent.FLAG_ACTIVITY_CLEAR_TASK)!=0||pkg.equals(a.field(source,"packageName")))return null;
             Object sourceTask=a.call(source,"getTask");
-            if(sourceTask==null||sourceTask!=a.focused.invoke(root)||!a.bool(sourceTask,"isVisibleRequested")
+            if(sourceTask==null||sourceTask!=a.focusedTask(root)||!a.bool(sourceTask,"isVisibleRequested")
                 ||a.integer(sourceTask,"getWindowingMode")!=1)return null;
             Object display=a.call(sourceTask,"getDisplayContent");Rect bounds=(Rect)a.call(display,"getBounds");
             if((Integer)a.field(display,"mDisplayId")!=0||a.integer(sourceTask,"getActivityType")!=1)return null;
@@ -1450,7 +1450,7 @@ final class WindowEngine {
             Object focus=display==null?null:a.field(display,"mCurrentFocus");
             if(focus==null||a.call(focus,"getTask")!=s.task||a.field(focus,"mActivityRecord")!=top
                 ||a.call(top,"findMainWindow",new Class<?>[]{boolean.class},false)!=focus)return null;
-            Object ime=a.call(display,"getImeWindow");if(ime!=null&&a.bool(ime,"isVisible"))return null;
+            Object ime=a.imeWindow(display);if(ime!=null&&a.bool(ime,"isVisible"))return null;
             return new BackRoot(top,focus,display,a.integer(top,"getUid"),s.taskId);
         }}catch(Exception e){log.accept("LINKED_BACK_ROOT_FAILED "+FrameworkAccess.reason(e));return null;}
     }
@@ -1706,7 +1706,7 @@ final class WindowEngine {
 
     private Session snapshot(int taskId,String pkg,String token)throws Exception{return snapshot(taskId,pkg,token,false);}
     private Session snapshot(int taskId, String pkg, String token,boolean linked) throws Exception {
-        Object task = taskId < 0 ? a.focused.invoke(root) : find(taskId);
+        Object task = taskId < 0 ? a.focusedTask(root) : find(taskId);
         BackPreparation prepared=backPreparation;
         TaskVisibilityGuard mask=prepared!=null&&prepared.task==task&&prepared.token.equals(token)?prepared.mask:null;
         Session s=new AndroidWindowAdmission(a,atm,resizeCandidate).snapshot(task,pkg,token,linked,mask);
@@ -1808,7 +1808,7 @@ final class WindowEngine {
         if(!horizontal)types|=android.view.WindowInsets.Type.systemBars();
         if(types==0)return safe;
         Object state=a.call(a.call(display,"getInsetsStateController"),"getRawInsetsState");
-        Insets insets=(Insets)a.call(state,"calculateInsets",new Class<?>[]{Rect.class,Rect.class,int.class,boolean.class},bounds,bounds,types,true);
+        Insets insets=a.calculateInsets(state,bounds,types,true);
         safe.left=Math.max(safe.left,bounds.left+insets.left);safe.top=Math.max(safe.top,bounds.top+insets.top);
         safe.right=Math.min(safe.right,bounds.right-insets.right);safe.bottom=Math.min(safe.bottom,bounds.bottom-insets.bottom);
         return safe;
@@ -1832,7 +1832,7 @@ final class WindowEngine {
         if(normal==null||s.displayW>s.displayH)return normal;
         Object display=a.call(s.task,"getDisplayContent");Rect bounds=(Rect)a.call(display,"getBounds");
         Object state=a.call(a.call(display,"getInsetsStateController"),"getRawInsetsState");
-        Insets ime=(Insets)a.call(state,"calculateInsets",new Class<?>[]{Rect.class,Rect.class,int.class,boolean.class},bounds,bounds,android.view.WindowInsets.Type.ime(),false);
+        Insets ime=a.calculateInsets(state,bounds,android.view.WindowInsets.Type.ime(),false);
         return Geometry.avoidIme(normal,s.displayW,s.displayH,ime.bottom);
     }
     private void refresh(Session s) throws Exception {refresh(s,false);}
@@ -2077,7 +2077,7 @@ final class WindowEngine {
         // Callers can still own the WM lock. Snapshot now, but acquire AMS only
         // after this window operation unwinds, as the result broadcasts do.
         handler.post(()->{
-            try{context.sendBroadcast(state,null,android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle());}
+            try{dev.local.sunwindowdemo.core.LauncherHosts.broadcast(context,state,true);}
             catch(Exception e){log.accept("HISTORY_PUBLISH_FAILED "+FrameworkAccess.reason(e));}
         });
     }
@@ -2101,7 +2101,7 @@ final class WindowEngine {
             if(!matches(task,e)){history.removed(e.taskId());changed=true;continue;}
             boolean ours=owns(task);
             Object win=a.call(task,"getTopVisibleAppMainWindow");
-            boolean focused=a.focused.invoke(root)==task;
+            boolean focused=a.focusedTask(root)==task;
             boolean ready=!ours&&focused&&a.integer(task,"getWindowingMode")==1&&a.bool(task,"isVisibleRequested")&&!a.animating(task)
                 &&win!=null&&a.bool(win,"isDrawn")&&a.bool(win,"isVisible");
             if(ready){
@@ -2134,7 +2134,7 @@ final class WindowEngine {
     boolean hideRecent(Object task){
         if(!hideRecents)return false;
         try{
-            if(!owns(task)&&a.integer(task,"getWindowingMode")==1&&a.focused.invoke(root)==task)return false;
+            if(!owns(task)&&a.integer(task,"getWindowingMode")==1&&a.focusedTask(root)==task)return false;
             return matches(task,history.get((Integer)a.field(task,"mTaskId")));
         }catch(Exception e){return false;}
     }
@@ -2905,7 +2905,7 @@ final class WindowEngine {
         try{
             Object top=a.call(s.task,"topRunningActivity");
             Object current=a.field(display,"mCurrentFocus");
-            Object focused=a.focused.invoke(root);
+            Object focused=a.focusedTask(root);
             String runtime=s.frame+"/"+a.call(top,"getState")+"/input="+(current!=null&&a.call(current,"getTask")==s.task)
                 +"/focusedTask="+(focused==null?-1:(Integer)a.field(focused,"mTaskId"));
             if(!runtime.equals(s.lastRuntimeState)){
@@ -3057,7 +3057,7 @@ final class WindowEngine {
     void restoreFloatingCompat(Object task)throws Exception{
         a.call(task,"forAllActivities",new Class<?>[]{Consumer.class},(Consumer<Object>)activity->{
             try{
-                Object policy=a.call(a.field(activity,"mAppCompatController"),"getSizeCompatModePolicy");
+                Object policy=a.sizeCompatPolicy(a.field(activity,"mAppCompatController"));
                 Object insets=a.call(policy,"getAppCompatDisplayInsets");
                 if(insets==null||!(Boolean)a.field(insets,"mIsFloating"))return;
                 a.call(policy,"clearSizeCompatMode");
@@ -3210,7 +3210,7 @@ final class WindowEngine {
                 if(s.uid<10000||s.userId!=0||sessions.stream().anyMatch(other->other.uid==s.uid))continue;
                 android.content.pm.ApplicationInfo info=context.getPackageManager().getApplicationInfo(s.pkg,0);
                 if(info.uid!=s.uid||(info.flags&android.content.pm.ApplicationInfo.FLAG_PERSISTENT)!=0)continue;
-                synchronized(lock){Object focused=a.focused.invoke(root);Object top=focused==null?null:a.call(focused,"topRunningActivity");
+                synchronized(lock){Object focused=a.focusedTask(root);Object top=focused==null?null:a.call(focused,"topRunningActivity");
                     if(top!=null&&a.integer(top,"getUid")==s.uid){log.accept("CLOSE_END_APP_CANCELLED foreground="+s.pkg);continue;}}
                 Object manager=context.getSystemService(android.app.ActivityManager.class);
                 a.call(manager,"forceStopPackageAsUser",new Class<?>[]{String.class,int.class},s.pkg,s.userId);
@@ -3309,14 +3309,14 @@ final class WindowEngine {
     }
     private void environment(Intent out){
         synchronized(lock){try{
-            Object focused=a.focused.invoke(root);String foreground="";
+            Object focused=a.focusedTask(root);String foreground="";
             if(focused!=null){Object top=a.call(focused,"topRunningActivity");if(top!=null)foreground=(String)a.field(top,"packageName");}
             out.putExtra("foreground",foreground);
             Object display=a.call(root,"getDefaultDisplay");
-            Object ime=a.call(display,"getImeWindow");boolean visible=ime!=null&&a.bool(ime,"isVisible");
+            Object ime=a.imeWindow(display);boolean visible=ime!=null&&a.bool(ime,"isVisible");
             Rect bounds=(Rect)a.call(display,"getBounds");
             Object state=a.call(a.call(display,"getInsetsStateController"),"getRawInsetsState");
-            Insets insets=(Insets)a.call(state,"calculateInsets",new Class<?>[]{Rect.class,Rect.class,int.class,boolean.class},bounds,bounds,android.view.WindowInsets.Type.ime(),false);
+            Insets insets=a.calculateInsets(state,bounds,android.view.WindowInsets.Type.ime(),false);
             out.putExtra("imeVisible",visible).putExtra("imeTop",visible&&insets.bottom>0?bounds.bottom-insets.bottom:Integer.MAX_VALUE);
             Object focus=a.field(display,"mCurrentFocus");boolean system=false;
             if(focus!=null){android.view.WindowManager.LayoutParams attrs=(android.view.WindowManager.LayoutParams)a.field(focus,"mAttrs");

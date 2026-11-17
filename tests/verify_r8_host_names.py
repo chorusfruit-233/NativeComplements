@@ -6,6 +6,18 @@ import verify_signal_target as dex
 
 PREFIX = "Ldev/local/sunwindowdemo/"
 REQUIRED = {
+    (PREFIX + "FrameworkAccess;", "<init>"): {
+        "getTopDisplayFocusedRootTask", "getTopMostTask", "mInputMethodWindow", "assignLayers",
+        "mBuildingFinishLayers", "getAppCompatSizeCompatModePolicy", "android.window.TransitionRequestInfo$DisplayChange"},
+    (PREFIX + "LauncherGuard;", "onPackageLoaded"): {
+        "$r8$lambda$JDK2db7a_ZtzI6D1EJ5hYukunXo", "com.android.quickstep.TouchInteractionService$$ExternalSyntheticLambda2"},
+    (PREFIX + "features/iconlayers/LauncherThemeReporter;", "install"): {
+        "com.android.launcher3.util.Themes", "com.android.launcher3.LauncherPrefs", "isThemedIconEnabled", "getPrefs"},
+    (PREFIX + "features/callblocking/CallFilteringCopy;", "response"): {
+        "android.telecom.ParcelableCallResponse", "android.telecom.CallScreeningService$ParcelableCallResponse", "setCallScreeningResponse"},
+    (PREFIX + "features/iconlayers/IconLayerModule;", "installAnimationProbe"): {
+        "com.android.launcher3.views.FloatingIconView$$ExternalSyntheticLambda5", "getFloatingIconView",
+        "checkIconResult", "lambda$checkIconResult$1", "$r8$lambda$VSxnDoJuuRfQFY4HAM9sw1ccIlg"},
     (PREFIX + "TaskCover;", "refreshScreenCorners"): {"com.android.internal.policy.ScreenDecorationsUtils"},
     (PREFIX + "WindowControls;", "buildControlsRoot"): {
         "android.view.ViewTreeObserver$OnComputeInternalInsetsListener", "android.view.ViewTreeObserver$InternalInsetsInfo"},
@@ -44,6 +56,11 @@ REQUIRED = {
 
 # Verify the delivered APK includes the restored runtime and the integrated navigation host.
 RUNTIME_METHODS = {
+    "FrameworkVariants": {"nativeOverrideValidation", "focusedTask", "withoutFreeform"},
+    "FrameworkAccess": {"focusedTask", "imeWindow", "sizeCompatPolicy", "buildingTransitionLayers", "calculateInsets"},
+    "ViewportTargets": {"describe"},
+    "core/LauncherHosts": {"isLauncher", "packageForProcess", "ownsUid", "broadcast"},
+    "features/callblocking/CallFilteringCopy": {"copy", "response"},
     "WindowEngine": {"blockBackgroundTouch", "trackTouchGuard", "clientOwner", "ownerInsets", "idle", "mayAllowResize", "visibleFullscreen", "endClosedApplications"},
     "WindowPolicy": {"backgroundTouchGuard", "startsTouchGuard", "coveredFullscreen"},
     "BackBridge": {"connect", "cancelNativeUp", "abort"},
@@ -76,7 +93,7 @@ REMOVED_NAVBAR_OWNERS = {PREFIX + "features/navbar/" + name + ";" for name in RE
 
 
 def check(apk, window=False):
-    excluded = {"features/navbar/", "features/edgetouch/", "features/shade/"}
+    excluded = {"features/navbar/", "features/edgetouch/", "features/shade/", "features/callblocking/", "features/iconlayers/IconLayerModule"}
     shared = lambda owner: not any(owner.startswith(prefix) for prefix in excluded) and owner not in {"features/iconlayers/IconOverrides", "features/iconlayers/IconPolicy", "features/iconlayers/IconImages"}
     required = {key: value for key, value in REQUIRED.items() if not window or shared(key[0][len(PREFIX):])}
     runtime = {PREFIX + owner + ";": methods for owner, methods in RUNTIME_METHODS.items() if not window or shared(owner)}

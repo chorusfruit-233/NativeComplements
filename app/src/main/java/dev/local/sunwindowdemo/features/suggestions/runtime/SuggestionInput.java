@@ -41,7 +41,7 @@ final class SuggestionInput {
                 ||!Wire.validToken(request.getStringExtra("token"))){receiver.send(0,null);return;}
         try{synchronized(lock){
             Object display=a.call(root,"getDefaultDisplay"),current=a.field(display,"mCurrentFocus");
-            Object ime=a.call(display,"getImeWindow");
+            Object ime=a.imeWindow(display);
             if(current==null||ime==null||!a.bool(ime,"isVisible")||!a.bool(current,"isVisible"))throw new IllegalStateException("no editor window");
             WindowManager.LayoutParams attrs=(WindowManager.LayoutParams)a.field(current,"mAttrs");
             if(attrs.type<1||attrs.type>=WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW)throw new IllegalStateException("not an application");
@@ -56,7 +56,7 @@ final class SuggestionInput {
         if(SystemClock.uptimeMillis()>deadline){finish(false);return;}
         try{
             synchronized(lock){
-                Object display=a.call(root,"getDefaultDisplay"),ime=a.call(display,"getImeWindow");
+                Object display=a.call(root,"getDefaultDisplay"),ime=a.imeWindow(display);
                 if(!context.getSystemService(PowerManager.class).isInteractive()
                         ||context.getSystemService(KeyguardManager.class).isKeyguardLocked()
                         ||a.field(display,"mCurrentFocus")!=focus||!a.bool(focus,"isVisible")
