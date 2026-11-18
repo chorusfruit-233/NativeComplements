@@ -5,10 +5,15 @@ import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Point;
 import android.graphics.Rect;
+import android.os.Binder;
+import android.os.Handler;
+import android.os.Looper;
 import java.lang.reflect.*;
+import java.util.ArrayList;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 import static org.junit.Assert.*;
 
@@ -17,6 +22,9 @@ import static org.junit.Assert.*;
 public class AndroidWindowAdmissionTest {
     static final Object LOCK=new Object();
     public static final class Atm { public boolean mSupportsMultiWindow=true,mSupportsFreeformWindowManagement=true; }
+    public record Root(Task task) {
+        public Task anyTaskForId(int id,int mode){return id==task.mTaskId&&mode==0?task:null;}
+    }
     public static final class Display { public int mDisplayId;public Rect getBounds(){return new Rect(0,0,1200,2600);} }
     public static final class Area {
         public boolean isValidWindowingMode(int mode,Object activity,Task task){
@@ -144,5 +152,36 @@ public class AndroidWindowAdmissionTest {
         assertEquals(5,a.integer(nativeConfig,"getWindowingMode"));assertEquals(new Rect(20,30,620,1030),a.call(nativeConfig,"getBounds"));
         try{synchronized(LOCK){adapter.snapshot(task,"example.app","token",false,null);}fail("cannot acquire unlinked native freeform");}
         catch(IllegalStateException error){assertEquals(WindowAdmission.Rejection.OWNERSHIP.message,error.getMessage());}
+    }
+
+    @Test public void api35LongBackUsesReadyBackendAndNativeAdmission()throws Exception {
+        FrameworkAccess a=access();set(a,"lookup",Root.class.getMethod("anyTaskForId",int.class,int.class));
+        set(a,"nativeOverrideValidation",true);
+        var logs=new ArrayList<String>();WindowEngine engine=new WindowEngine(a,logs::add);
+        Field candidate=WindowEngine.class.getDeclaredField("resizeCandidate");candidate.setAccessible(true);
+        @SuppressWarnings("unchecked") Task task=new Task((ThreadLocal<Object>)candidate.get(engine));
+        task.mSurfaceAnimator.leashed=true;
+        Atm atm=new Atm();Handler handler=new Handler(Looper.getMainLooper());
+        set(engine,"context",RuntimeEnvironment.getApplication());set(engine,"handler",handler);
+        set(engine,"lock",LOCK);set(engine,"root",new Root(task));set(engine,"atm",atm);
+        set(engine,"uiLease",new Binder());set(engine,"attached",true);
+        Method command=WindowEngine.class.getDeclaredMethod("command",Intent.class);command.setAccessible(true);
+        Intent request=new Intent().putExtra("op","GESTURE").putExtra("predictiveEntry",true).putExtra("protocol",Wire.PROTOCOL)
+            .putExtra("package","example.app").putExtra("taskId",task.mTaskId).putExtra("token",Wire.token());
+        try{
+            command.invoke(engine,request);
+            assertTrue(logs.stream().anyMatch(s->s.contains("小窗后端预检未就绪")));
+            assertEquals(0,task.displayReads);
+
+            logs.clear();engine.preflightReady();atm.mSupportsFreeformWindowManagement=false;
+            command.invoke(engine,request);
+            assertTrue(logs.toString(),logs.stream().anyMatch(s->s.contains(WindowAdmission.Rejection.CAPABILITY.message)));
+            assertEquals(0,task.displayReads);
+
+            logs.clear();atm.mSupportsFreeformWindowManagement=true;
+            command.invoke(engine,request);
+            assertTrue(logs.toString(),logs.contains("ENTRY_WAIT task="+task.mTaskId));
+            assertTrue(task.displayReads>0);
+        }finally{handler.removeCallbacksAndMessages(null);}
     }
 }

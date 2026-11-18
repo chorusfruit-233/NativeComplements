@@ -1,6 +1,10 @@
 # 小窗：Hook、系统适配边界与决策／执行现状
 
-## 当前实施状态：0.10.0 / code140
+## 当前实施状态：0.10.0 / code141
+
+2026-11-18，fajita 真机反馈长侧滑提示正常，松手后闪过像启动页的画面并留在原页面，浏览器链接能打开小窗。实际 SystemUI 的 `BackAnimationController` 通过 `mBackTransitionHandler.mTransitions` 持有 Shell 转场。code141 在完成原生返回取消后，通过该对象的 `runOnIdle` 交接，按 API35 原生 finish 事务合并顺序延续遮罩。小窗接管以 Hook 预检和 WMS 连接为入口条件，随后执行原生 Freeform 与任务准入检查。[Shell 接口](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/NativeBackTransitions.java>) · [后端接管](<../../app/src/main/java/dev/local/sunwindowdemo/features/floatingwindow/legacy/WindowEngine.java>)
+
+实际 SystemUI 检查覆盖 116 个成员及关键调用顺序。完整版 403 项、小窗版 398 项单元测试全部通过，包含两种 Shell 对象布局下的空闲交接和 API35 手势命令进入任务准入。两个版本均使用与 code140 相同的 Android Debug 证书，修复包待真机复测。[SystemUI 检查](<../../tests/verify_systemui15_target.py>)
 
 2026-11-17 用户提供完整 fajita LineageOS 22.2 ROM 后，本轮按实际 framework/services、Trebuchet 与 Telecom 补充接口适配；详见[指定 ROM 证据与打包说明](<system-features.md>)。当前 [full scope](<../../app/src/full/resources/META-INF/xposed/scope.list>) 为 system/SystemUI/Pixel/AOSP Launcher/Telecom 共5项，[window scope](<../../app/src/window/resources/META-INF/xposed/scope.list>) 为前4项；下方早期提交的三 scope 记录按历史阶段阅读。未新增设备效果保证，原解耦剩余任务不变。
 

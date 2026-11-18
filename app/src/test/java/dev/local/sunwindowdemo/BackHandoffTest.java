@@ -229,4 +229,56 @@ public class BackHandoffTest {
         wait.invoke(bridge,stroke,40);
         assertNull(get(bridge,"settling"));assertNull(get(bridge,"pending"));assertEquals(List.of(token),cancelled);
     }
+
+    private static final class ShellTransitions {
+        Runnable pending;
+        public void runOnIdle(Runnable callback) { pending=callback; }
+    }
+    private static class ShellController {
+        Object mBackNavigationInfo=new Object();
+        boolean mPostCommitAnimationInProgress;
+        final java.util.concurrent.Executor mShellExecutor=Runnable::run;
+    }
+    private static final class HandlerOwner {
+        final ShellTransitions mTransitions;
+        HandlerOwner(ShellTransitions transitions) { mTransitions=transitions; }
+    }
+    private static final class Api35Controller extends ShellController {
+        final HandlerOwner mBackTransitionHandler;
+        Api35Controller(ShellTransitions transitions) { mBackTransitionHandler=new HandlerOwner(transitions); }
+    }
+    private static final class ModernController extends ShellController {
+        final ShellTransitions mTransitions;
+        ModernController(ShellTransitions transitions) { mTransitions=transitions; }
+    }
+
+    @Test public void preparedBackDispatchesOnceAfterItsNativeShellBecomesIdle()throws Exception {
+        SystemUiHost host=host();
+        List<Intent> broadcasts=Shadows.shadowOf(RuntimeEnvironment.getApplication()).getBroadcastIntents();
+        for(boolean api35:new boolean[]{true,false}){
+            int before=broadcasts.size();
+            Object bridge=bridge();
+            ShellTransitions transitions=new ShellTransitions();
+            ShellController controller=api35?new Api35Controller(transitions):new ModernController(transitions);
+            set(bridge,"backTransitions",new NativeBackTransitions(controller.getClass(),ShellTransitions.class));
+            set(bridge,"enabled",true);set(bridge,"lease",new Binder());set(bridge,"sink",get(host,"dropChannel"));
+            Class<?> type=Class.forName("dev.local.sunwindowdemo.BackBridge$Stroke");
+            Constructor<?> constructor=type.getDeclaredConstructor();constructor.setAccessible(true);
+            Object stroke=constructor.newInstance();String token=Wire.token();
+            set(stroke,"token",token);set(stroke,"task",42);set(stroke,"pkg","example.app");set(stroke,"controller",controller);
+            set(bridge,"settling",stroke);
+            Method wait=bridge.getClass().getDeclaredMethod("waitForNativeBack",type,int.class);wait.setAccessible(true);
+            wait.invoke(bridge,stroke,0);
+            assertNull(transitions.pending);assertEquals(before,broadcasts.size());
+            controller.mBackNavigationInfo=null;
+            idle(40);
+            assertNotNull(transitions.pending);assertEquals(before,broadcasts.size());
+            transitions.pending.run();idle(0);
+            assertEquals(before+1,broadcasts.size());
+            assertEquals("GESTURE",broadcasts.get(before).getStringExtra("op"));
+            assertEquals(token,broadcasts.get(before).getStringExtra("token"));
+            idle(650);
+            assertEquals(before+1,broadcasts.size());assertTrue(cancelled.isEmpty());
+        }
+    }
 }

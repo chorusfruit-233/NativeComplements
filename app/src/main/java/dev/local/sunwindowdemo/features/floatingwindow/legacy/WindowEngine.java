@@ -141,7 +141,7 @@ final class WindowEngine {
     private BackPreparation backPreparation;
     private record BackPreparation(Object task,String token,TaskVisibilityGuard mask,TaskCover cover,IBinder lease){}
     private boolean prepareBack(int id,String pkg,String token,android.graphics.RectF pose,float radius,android.view.SurfaceControl leash){
-        if(lock==null||handler==null||context==null||!Wire.allowedPackage(pkg)||!Wire.validToken(token))return false;
+        if(!entryReady()||lock==null||handler==null||context==null||!Wire.allowedPackage(pkg)||!Wire.validToken(token))return false;
         synchronized(lock){try{
             if(!uiReady||uiLease==null||!uiLease.isBinderAlive()||SystemClock.elapsedRealtime()-uiSeen>3000
                 ||normalOccupied()||pendingStart!=null
@@ -259,9 +259,10 @@ final class WindowEngine {
         new java.util.concurrent.atomic.AtomicReference<>();
     private volatile boolean refreshQueued;
     private String last = "后端正在初始化";
-    private boolean attached;
+    private volatile boolean attached;
     private volatile boolean hooksReady;
     void preflightReady(){hooksReady=true;}
+    private boolean entryReady(){return attached&&hooksReady;}
 
     static final class Session {
         Session returnTo;
@@ -432,6 +433,8 @@ final class WindowEngine {
                 return;
             }
             if ("CANCEL_OPEN".equals(op)) { cancelRecoveryOpen(i.getStringExtra("token"));return; }
+            if (("GESTURE".equals(op)||"OPEN".equals(op)||"START".equals(op))&&!entryReady())
+                throw new IllegalStateException("小窗后端预检未就绪");
             if ("GESTURE".equals(op)) { openGeneration++;cancelRecoveryOpen(null);cancelStart("gesture");trace.stop();gestureStart(new Intent(i).putExtra("generation",openGeneration));return; }
             if ("OPEN".equals(op)) { openGeneration++;cancelRecoveryOpen(null);cancelStart("open");trace.stop();open(new Intent(i).putExtra("generation",openGeneration),0); return; }
             if ("CLOSE".equals(op)||"NORMAL".equals(op)||"MINI".equals(op)||"FULL".equals(op)||"RESIZE".equals(op)||"END_RESIZE".equals(op)||"RELEASE".equals(op)||"MOVE".equals(op)||"DOCK".equals(op)||"MINI_SIZE".equals(op)||"MUTE".equals(op)||"RESTORE_MINI".equals(op)||"MINI_DRAG".equals(op)||"MINI_DRAG_CANCEL".equals(op)||"EDGE_DRAG".equals(op)||"EDGE_DOCK".equals(op)||"EDGE_BAR_DRAG".equals(op)||"EDGE_BAR_DOCK".equals(op)||"EDGE_DRAG_CANCEL".equals(op)) {
@@ -455,7 +458,6 @@ final class WindowEngine {
             }
             if (!"START".equals(op)) return;
             if(waitForRecovery(i,()->command(i)))return;
-            if (Build.VERSION.SDK_INT != 37) throw new IllegalStateException("首版仅验证 Android 17 / API 37");
             requireUnlocked("先解锁屏幕");
             String pkg = i.getStringExtra("package"), token = i.getStringExtra("token");
             if (!Wire.allowedPackage(pkg) || !Wire.validToken(token)) throw new IllegalArgumentException("目标或标识不匹配");
@@ -3345,7 +3347,7 @@ final class WindowEngine {
         }
         out.putExtra("capabilitiesKnown",capabilityKnown)
             .putExtra("supportsMultiWindow",capabilityMultiWindow).putExtra("supportsFreeform",capabilityFreeform)
-            .putExtra("preflightReady",attached&&hooksReady).putExtra("ownershipConflict",false);
+            .putExtra("preflightReady",entryReady()).putExtra("ownershipConflict",false);
     }
     private void report(String event){report(event,null);}
     private void report(String event,String requestId) {

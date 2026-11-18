@@ -26,6 +26,7 @@ public final class BackBridge extends XposedModule {
     private final Handler main=new Handler(Looper.getMainLooper());
     private Field viewField,callbackField;
     private Method cancelBack;
+    private NativeBackTransitions backTransitions;
     private volatile Stroke settling;
     private Stroke cancelling;
     private static final class Stroke {
@@ -53,7 +54,6 @@ public final class BackBridge extends XposedModule {
         ProductFeatures.installNotifications(this,p.getDefaultClassLoader(),this::note);
         WindowTools.install(this,p.getDefaultClassLoader(),this::note);
         NotificationWindow.install(this,p.getDefaultClassLoader(),this::note);
-        installBackFinish(p.getDefaultClassLoader());
         try{
             ClassLoader cl=p.getDefaultClassLoader();
             Class<?> panel=Class.forName("com.android.systemui.navigationbar.gestural.BackPanelController",false,cl);
@@ -65,6 +65,8 @@ public final class BackBridge extends XposedModule {
             Field allow=field(handlerClass,"mAllowGesture"),logging=field(handlerClass,"mLogGesture"),rejected=field(handlerClass,"mInRejectedExclusion");
             if(dispatch.getReturnType()!=void.class||allow.getType()!=boolean.class||logging.getType()!=boolean.class||rejected.getType()!=boolean.class)
                 throw new NoSuchMethodException("native Back cancellation signatures");
+            backTransitions=new NativeBackTransitions(Class.forName("com.android.wm.shell.back.BackAnimationController",false,cl),
+                Class.forName("com.android.wm.shell.transition.Transitions",false,cl));
             NativeBackInput input=NativeBackInput.resolve(cl);
             // This native caller can inline dispatchToBackAnimation in an AOT SystemUI build.
             if(!deoptimize(input.invoke))throw new IllegalStateException("native Back dispatcher deoptimize");
@@ -97,6 +99,7 @@ public final class BackBridge extends XposedModule {
                 }
             }));
             note("BACK_READY hooks=4 version="+BuildConfig.VERSION_NAME);
+            installBackFinish(cl);
             installScreenshotHooks(cl);
         }catch(Throwable e){for(XposedInterface.HookHandle h:hooks)try{h.unhook();}catch(Throwable ignored){}note("BACK_DISABLED "+e.getClass().getSimpleName());}
     }
@@ -104,23 +107,31 @@ public final class BackBridge extends XposedModule {
     @android.annotation.SuppressLint("BlockedPrivateApi")
     private void installBackFinish(ClassLoader loader){
         try{
-            Class<?> transitions=Class.forName("com.android.wm.shell.transition.Transitions",false,loader);
+            Class<?> transitions=backTransitions.type;
             Class<?> active=Class.forName("com.android.wm.shell.transition.Transitions$ActiveTransition",false,loader);
             Class<?> info=Class.forName("android.window.TransitionInfo",false,loader);
             Class<?> change=Class.forName("android.window.TransitionInfo$Change",false,loader);
-            Field known=field(transitions,"mKnownTransitions"),mix=field(transitions,"mMixpatchAnimations");
+            Field known=field(transitions,"mKnownTransitions");
+            Field mixpatches;
+            try{mixpatches=field(transitions,"mMixpatchAnimations");}
+            catch(NoSuchFieldException absent){
+                // The API35 finish path merges the main and joined transactions directly.
+                if(!backTransitions.nestedOwner())throw absent;
+                mixpatches=null;
+            }
+            final Field mix=mixpatches;
             Field start=field(active,"mStartT"),finish=field(active,"mFinishT"),merged=field(active,"mMerged"),details=field(active,"mInfo");
             Method changes=info.getDeclaredMethod("getChanges"),task=change.getDeclaredMethod("getTaskInfo");
             Method end=transitions.getDeclaredMethod("onFinish",IBinder.class,Class.forName("android.window.WindowContainerTransaction",false,loader));
             if(end.getReturnType()!=void.class||start.getType()!=SurfaceControl.Transaction.class||finish.getType()!=SurfaceControl.Transaction.class
-                ||details.getType()!=info||!Map.class.isAssignableFrom(known.getType())||!List.class.isAssignableFrom(mix.getType())
+                ||details.getType()!=info||!Map.class.isAssignableFrom(known.getType())||(mix!=null&&!List.class.isAssignableFrom(mix.getType()))
                 ||!List.class.isAssignableFrom(merged.getType())||!List.class.isAssignableFrom(changes.getReturnType())
                 ||task.getReturnType()!=ActivityManager.RunningTaskInfo.class)throw new NoSuchMethodException("back finish signatures");
             hook(end).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain->{
                 Stroke s=settling;
                 try{if(s!=null&&live()&&s.gesture.revision()==generation&&s.controller!=null
-                        &&field(s.controller.getClass(),"mTransitions").get(s.controller)==chain.getThisObject()
-                        &&((List<?>)mix.get(chain.getThisObject())).isEmpty()){
+                        &&backTransitions.owner(s.controller)==chain.getThisObject()
+                        &&(mix==null||((List<?>)mix.get(chain.getThisObject())).isEmpty())){
                     Object running=((Map<?,?>)known.get(chain.getThisObject())).get(chain.getArg(0));
                     if(running!=null){
                         List<Object> group=new ArrayList<>();group.add(running);
@@ -357,9 +368,7 @@ public final class BackBridge extends XposedModule {
                     if(busy)main.postDelayed(()->waitForNativeBack(s,attempt+1),40);
                     else if(s.controller==null)main.post(()->commit(s));
                     else{
-                        Object transitions=field(s.controller.getClass(),"mTransitions").get(s.controller);
-                        Method idle=transitions.getClass().getDeclaredMethod("runOnIdle",Runnable.class);idle.setAccessible(true);
-                        idle.invoke(transitions,(Runnable)()->main.post(()->{if(settling==s)commit(s);}));
+                        backTransitions.runOnIdle(s.controller,()->main.post(()->{if(settling==s)commit(s);}));
                         main.postDelayed(()->{if(settling==s){settling=null;Wire.cancelBack(s.token);note("BACK_TRANSITION_TIMEOUT");}},650);
                     }
                 }catch(Exception e){main.post(()->abort(s));note("BACK_WAIT_FAILED "+e.getClass().getSimpleName());}

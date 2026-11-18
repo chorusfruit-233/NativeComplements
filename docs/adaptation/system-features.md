@@ -1,6 +1,8 @@
 # 系统功能接入与适配边界（非小窗主体）
 
-## 当前实施状态：0.10.0 / code140
+## 当前实施状态：0.10.0 / code141
+
+code141 根据 fajita 真机反馈补齐长侧滑的 Shell 转场交接和服务端接管。修复包的实际手势效果待复测。[交接修复](<floating-window.md>)
 
 2026-11-17 用户提供完整 fajita ROM 后，适配范围已扩展到该构建的 framework/services、Trebuchet 和 Telecom；下方 11-15 的“只有 SystemUI”结论保留为历史检查点。指定 ROM 的接口证据不替代设备回归，也不表示全部 LOS 构建或小窗解耦已完成。
 

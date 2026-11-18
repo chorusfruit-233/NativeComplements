@@ -1,6 +1,6 @@
 # 同源独立小窗：现状依赖与接入隔离审计
 
-## 当前实施状态：0.10.0 / code140
+## 当前实施状态：0.10.0 / code141
 
 2026-11-17 用户提供完整 fajita LineageOS 22.2 ROM 后，本轮按实际 framework/services、Trebuchet 与 Telecom 补充接口适配；详见[指定 ROM 证据与打包说明](<system-features.md>)。当前 [full scope](<../../app/src/full/resources/META-INF/xposed/scope.list>) 为 system/SystemUI/Pixel/AOSP Launcher/Telecom 共5项，[window scope](<../../app/src/window/resources/META-INF/xposed/scope.list>) 为前4项；下方早期提交的三 scope 记录按历史阶段阅读。未新增设备效果保证，原解耦剩余任务不变。
 

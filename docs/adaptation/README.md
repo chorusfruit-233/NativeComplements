@@ -1,10 +1,10 @@
 # 跨系统接入与小窗拆分索引
 
-## 当前状态：0.10.0 / code140 实施中
+## 当前状态：0.10.0 / code141 实施中
 
 2026-11-17 用户提供完整 fajita LineageOS 22.2 ROM 后，本轮按实际 framework/services、Trebuchet 与 Telecom 补充接口适配；详见[指定 ROM 证据与打包说明](<system-features.md>)。当前 [full scope](<../../app/src/full/resources/META-INF/xposed/scope.list>) 为 system/SystemUI/Pixel/AOSP Launcher/Telecom 共5项，[window scope](<../../app/src/window/resources/META-INF/xposed/scope.list>) 为前4项；下方早期提交的三 scope 记录按历史阶段阅读。未新增设备效果保证，原解耦剩余任务不变。
 
-当前第一轮小窗解耦与同源独立小窗版正在实施，版本为 `0.10.0` / versionCode `140`，以 [构建配置](<../../app/build.gradle.kts>) 为准。**不是全部解耦完成、独立版可用或 LOS 兼容声明。** Alive 与其他功能重构仍暂缓。
+当前第一轮小窗解耦与同源独立小窗版正在实施，版本为 `0.10.0` / versionCode `141`。Alive 与其他功能重构仍暂缓。code141 处理了 fajita 上长侧滑提示出现、松手后小窗未呈现的问题。[交接修复](<floating-window.md>) · [构建配置](<../../app/build.gradle.kts>)
 
 ### 已提交并 push 的边界
 

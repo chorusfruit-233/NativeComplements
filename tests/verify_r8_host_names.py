@@ -40,6 +40,7 @@ REQUIRED = {
     (PREFIX + "NativeBackInput;", "<init>"): {
         "mDisplayBackGestureHandlers", "inputMonitorCompat", "mDisplayId", "mInputMonitor",
         "onInputEvent", "invoke", "val$listener", "INSTANCE"},
+    (PREFIX + "NativeBackTransitions;", "<init>"): {"mTransitions", "mBackTransitionHandler", "runOnIdle"},
     (PREFIX + "NotificationClickTargets;", "<init>"): {
         "run", "startPendingIntent", "f$0", "f$2", "f$3", "f$4", "f$5", "mDisplayId"},
     (PREFIX + "features/shade/ComposeShadeLayout;", "install"): {"kotlin.coroutines.Continuation"},

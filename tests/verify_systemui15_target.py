@@ -18,6 +18,17 @@ HANDLER = EDGE + "EdgeBackGestureHandler;"
 INPUT = EDGE + "EdgeBackGestureHandler$$ExternalSyntheticLambda11;"
 RECEIVER = "Lcom/android/systemui/shared/system/InputChannelCompat$InputEventReceiver$1;"
 COMPAT = "Lcom/android/systemui/shared/system/InputMonitorCompat;"
+BACK = "Lcom/android/wm/shell/back/BackAnimationController"
+BACK_IMPL, BACK_TRANSITION = BACK + "$BackAnimationImpl;", BACK + "$BackTransitionHandler;"
+TRANSITIONS = "Lcom/android/wm/shell/transition/Transitions;"
+ACTIVE_TRANSITION = TRANSITIONS[:-1] + "$ActiveTransition;"
+BACK_INIT = "(Lcom/android/wm/shell/sysui/ShellInit;Lcom/android/wm/shell/sysui/ShellController;"
+BACK_INIT += "Lcom/android/wm/shell/common/ShellExecutor;Landroid/os/Handler;Landroid/app/IActivityTaskManager;"
+BACK_INIT += "Landroid/content/Context;Landroid/content/ContentResolver;Lcom/android/wm/shell/back/BackAnimationBackground;"
+BACK_INIT += "Lcom/android/wm/shell/back/ShellBackAnimationRegistry;Lcom/android/wm/shell/sysui/ShellCommandHandler;"
+BACK_INIT += TRANSITIONS + "Landroid/os/Handler;)V"
+HANDLER_INIT = "(" + BACK + ";" + TRANSITIONS + ")V"
+FINISH_TRANSITION = "(Landroid/os/IBinder;Landroid/window/WindowContainerTransaction;)V"
 CLICK = "Lcom/android/systemui/statusbar/phone/StatusBarNotificationActivityStarter"
 ENTRY = "Lcom/android/systemui/statusbar/notification/collection/NotificationEntry;"
 RUNNER, SENDER = CLICK + "$$ExternalSyntheticLambda4;", CLICK + "$$ExternalSyntheticLambda9;"
@@ -47,6 +58,9 @@ METHODS = {
     HANDLER: [("cancelGesture", MOTION), ("dispatchToBackAnimation", MOTION)],
     INPUT: [("onInputEvent", EVENT)], RECEIVER: [("onInputEvent", EVENT)],
     EDGE + "BackPanelController;": [("onMotionEvent", MOTION), ("onViewAttached", "()V"), ("onDestroy", "()V")],
+    BACK + ";": [("<init>", BACK_INIT), ("finishBackAnimation", "()V")],
+    BACK_TRANSITION: [("<init>", HANDLER_INIT), ("createClosePrepareTransition", "()V")],
+    TRANSITIONS: [("runOnIdle", "(Ljava/lang/Runnable;)V"), ("onFinish", FINISH_TRANSITION)],
     RUNNER: [("run", "()V")], SENDER: [("startPendingIntent", "(Landroid/view/RemoteAnimationAdapter;)I")],
     BINDER: [("emit", EMIT)], VM: [("getSubscriptionId", "()I")],
     RADIO: [("onSignalStrengthsChanged", "(Landroid/telephony/SignalStrength;)V"),
@@ -66,7 +80,16 @@ METHODS = {
     "Lcom/android/systemui/statusbar/phone/PhoneStatusBarView;": [("updateStatusBarHeight", "()V")],
 }
 FIELDS = {
-    HANDLER: [("mDisplayId", "I"), ("mInputMonitor", COMPAT), *[(n, "Z") for n in ("mAllowGesture", "mLogGesture", "mInRejectedExclusion")]],
+    HANDLER: [("mDisplayId", "I"), ("mInputMonitor", COMPAT), ("mBackAnimation", BACK_IMPL),
+              *[(n, "Z") for n in ("mAllowGesture", "mLogGesture", "mInRejectedExclusion")]],
+    BACK_IMPL: [("this$0", BACK + ";")],
+    BACK + ";": [("mBackTransitionHandler", BACK_TRANSITION), ("mBackNavigationInfo", "Landroid/window/BackNavigationInfo;"),
+                 ("mPostCommitAnimationInProgress", "Z"), ("mShellExecutor", "Lcom/android/wm/shell/common/ShellExecutor;")],
+    BACK_TRANSITION: [("mTransitions", TRANSITIONS)],
+    TRANSITIONS: [("mKnownTransitions", "Landroid/util/ArrayMap;"), ("mRunWhenIdleQueue", "Ljava/util/ArrayList;")],
+    ACTIVE_TRANSITION: [("mStartT", "Landroid/view/SurfaceControl$Transaction;"),
+                        ("mFinishT", "Landroid/view/SurfaceControl$Transaction;"),
+                        ("mInfo", "Landroid/window/TransitionInfo;"), ("mMerged", "Ljava/util/ArrayList;")],
     INPUT: [("f$0", HANDLER)], RECEIVER: [("val$listener", "Lcom/android/systemui/shared/system/InputChannelCompat$InputEventListener;")],
     COMPAT: [("mInputMonitor", "Landroid/view/InputMonitor;")],
     RUNNER: [("f$1", ENTRY), ("f$3", "Landroid/app/PendingIntent;"), ("f$5", "Z")],
@@ -130,12 +153,23 @@ def verify(apk):
         return any(m["owner"] == owner and m["name"] == name for m in rows)
 
     native_input = calls(INPUT, "onInputEvent", EVENT)
-    assert call(native_input, HANDLER, "dispatchToBackAnimation")
-    assert any(m["name"] == "onMotionEvent" for m in native_input)
+    panel_dispatch = [m["name"] for m in native_input if m["name"] in ("onMotionEvent", "dispatchToBackAnimation")]
+    assert panel_dispatch == ["onMotionEvent", "dispatchToBackAnimation"] * 2, "panel must see terminal UP before Shell"
     receiver = calls(RECEIVER, "onInputEvent", EVENT)
     listener = next(i for i, m in enumerate(receiver) if m["name"] == "onInputEvent")
     finish = next(i for i, m in enumerate(receiver) if m["name"] == "finishInputEvent")
     assert listener < finish, "listener must return to native event completion"
+    assert not any(f["name"] == "mTransitions" for f in classes[BACK + ";"]["fields"])
+    assert not any(f["name"] == "mMixpatchAnimations" for f in classes[TRANSITIONS]["fields"])
+    controller_init = calls(BACK + ";", "<init>", BACK_INIT)
+    assert call(controller_init, BACK_TRANSITION, "<init>") and call(controller_init, TRANSITIONS, "addHandler")
+    nested = instructions(BACK_TRANSITION, "<init>", HANDLER_INIT)
+    assert any(i["opcode"] == "5b" and i.get("field", {}).get("name") == "mTransitions" for i in nested)
+    assert call(calls(BACK_TRANSITION, "createClosePrepareTransition", "()V"), TRANSITIONS, "startTransition")
+    assert call(calls(TRANSITIONS, "runOnIdle", "(Ljava/lang/Runnable;)V"), "Ljava/lang/Runnable;", "run")
+    finish_calls = calls(TRANSITIONS, "onFinish", FINISH_TRANSITION)
+    tx = "Landroid/view/SurfaceControl$Transaction;"
+    assert [m["name"] for m in finish_calls if m["owner"] == tx] == ["clear", "merge", "merge", "apply"]
     run = instructions(RUNNER, "run", "()V")
     assert any(i.get("type") == SENDER for i in run), "notification body runnable must create the selected sender"
     assert any(i.get("field", {}).get("name") == "f$5" for i in run)
@@ -157,7 +191,7 @@ def verify(apk):
     assert classes["Lcom/android/systemui/navigationbar/views/NavigationBarTransitions;"]["superclass"] == BAR + ";"
     for name in ("onInit", "repositionNavigationBar"):
         assert call(calls(NAV, name, "()V" if name == "onInit" else "(I)V"), NAV, "getBarLayoutParamsForRotation")
-    print(f"PASS: draft Android15 SystemUI SHA256, {count} exact members and native input/notification/signal/shade/navigation callers")
+    print(f"PASS: draft Android15 SystemUI SHA256, {count} exact members and native input/Back handoff/notification/signal/shade/navigation callers")
     print("SystemUI ABI evidence only; device effects and framework/services/Launcher compatibility remain unverified")
 
 
